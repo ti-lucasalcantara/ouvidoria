@@ -1,0 +1,115 @@
+#--------------------------------------------------------------------
+# Example Environment Configuration file
+#
+# This file can be used as a starting point for your own
+# custom .env files, and contains most of the possible settings
+# available in a default install.
+#
+# By default, all of the settings are commented out. If you want
+# to override the setting, you must un-comment it by removing the '#'
+# at the beginning of the line.
+#--------------------------------------------------------------------
+
+#--------------------------------------------------------------------
+# SSO
+#--------------------------------------------------------------------
+#sso.login_url = *********************
+
+
+#--------------------------------------------------------------------
+# JWT
+#--------------------------------------------------------------------
+
+# jwt.secret = *************
+
+#--------------------------------------------------------------------
+# ENVIRONMENT
+#--------------------------------------------------------------------
+
+# CI_ENVIRONMENT = production
+
+#--------------------------------------------------------------------
+# APP
+#--------------------------------------------------------------------
+
+# app.baseURL = ''
+# If you have trouble with `.`, you could also use `_`.
+# app_baseURL = ''
+# app.forceGlobalSecureRequests = false
+# app.CSPEnabled = false
+
+#--------------------------------------------------------------------
+# DATABASE
+#--------------------------------------------------------------------
+
+#database.pharmakon.hostname =192.168.0.94
+#database.pharmakon.database =CRFMG
+#database.pharmakon.username =****
+#database.pharmakon.password =******* 
+#database.pharmakon.DBDriver =SQLSRV
+#database.pharmakon.DBPrefix =
+#database.pharmakon.port =1433
+
+# OUVIDORIA - Banco MySQL (descomente e configure)
+# database.default.hostname = localhost
+# database.default.database = ouvidoria
+# database.default.username = root
+# database.default.password = root
+# database.default.DBDriver = MySQLi
+# database.default.DBPrefix =
+# database.default.port = 3306
+
+# If you use MySQLi as tests, first update the values of Config\Database::$tests.
+# database.tests.hostname = localhost
+# database.tests.database = ci4_test
+# database.tests.username = root
+# database.tests.password = root
+# database.tests.DBDriver = MySQLi
+# database.tests.DBPrefix =
+# database.tests.charset = utf8mb4
+# database.tests.DBCollat = utf8mb4_general_ci
+# database.tests.port = 3306
+
+#--------------------------------------------------------------------
+# ENCRYPTION
+#--------------------------------------------------------------------
+
+# encryption.key =
+
+#--------------------------------------------------------------------
+# OUVIDORIA - Criptografia (OBRIGATÓRIO para manifestações)
+# Master key com pelo menos 32 caracteres. Nunca commitar em produção.
+# Exemplo: ouvidoria.encryption.master_key = abcdef1234567890abcdef1234567890
+#--------------------------------------------------------------------
+# ouvidoria.encryption.master_key = 
+
+#--------------------------------------------------------------------
+# SESSION
+#--------------------------------------------------------------------
+
+# session.driver = 'CodeIgniter\Session\Handlers\FileHandler'
+# session.savePath = null
+
+#--------------------------------------------------------------------
+# LOGGER
+#--------------------------------------------------------------------
+
+# logger.threshold = 4
+
+
+#--------------------------------------------------------------------
+# FTP
+#--------------------------------------------------------------------
+# Diretório base remoto (sem / no final). Ex.: /var/ftp/files
+FTP_BASEDIR="/pasta/remota"
+
+FTP_HOST=192.168.0.123
+FTP_PORT=21
+FTP_USER=usuario
+FTP_PASS=senha_super_secreta
+
+# true para FTPS (TLS). Use apenas true/false sem aspas
+FTP_SSL=false
+
+# Geralmente true atrás de NAT/firewall
+FTP_PASSIVE=true
