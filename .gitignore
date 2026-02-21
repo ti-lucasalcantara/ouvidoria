@@ -3,7 +3,6 @@
 #-------------------------
 public/temp/*
 writable/ftp_cache/*
-app/Config/App.php
 app/Libraries/C_sgbd.php
 app/Libraries/pharmakon.ini
 # OS X
