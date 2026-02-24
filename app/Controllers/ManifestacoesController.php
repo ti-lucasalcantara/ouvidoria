@@ -243,6 +243,8 @@ class ManifestacoesController extends BaseController
             session()->setFlashdata(getMessageFail('toast', ['text' => 'Configure ouvidoria.encryption.master_key no arquivo .env (mínimo 32 caracteres).']));
             return redirect()->back()->withInput();
         }
+
+        $manifestacaoId = null;
         $db->transStart();
         try {
             $manifestacaoId = $manifestacaoModel->insert($dados, true);
@@ -263,15 +265,24 @@ class ManifestacoesController extends BaseController
                 'protocolo' => $protocolo,
             ]);
 
-            // Upload de anexos
-            $this->processarAnexos($manifestacaoId);
-
             $db->transComplete();
         } catch (\Throwable $e) {
             $db->transRollback();
             log_message('error', $e->getMessage());
+            // Se a manifestação foi commitada antes da exceção (ex.: transComplete já executou), não mostrar erro
+            if ($manifestacaoId && $manifestacaoModel->find($manifestacaoId)) {
+                session()->setFlashdata(getMessageSucess('toast', ['text' => 'Manifestação cadastrada com sucesso.']));
+                return redirect()->to(url_to('ouvidoria.manifestacoes.show', $manifestacaoId));
+            }
             session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao salvar manifestação.']));
             return redirect()->back()->withInput();
+        }
+
+        // Anexos fora da transação principal: falha em anexo não invalida o cadastro
+        try {
+            $this->processarAnexos($manifestacaoId);
+        } catch (\Throwable $e) {
+            log_message('error', 'processarAnexos após store: ' . $e->getMessage());
         }
 
         session()->setFlashdata(getMessageSucess('toast', ['text' => 'Manifestação cadastrada com sucesso.']));
@@ -336,6 +347,7 @@ class ManifestacoesController extends BaseController
             ->where('manifestacao_atribuicoes.manifestacao_id', $id)
             ->orderBy('manifestacao_atribuicoes.criado_em', 'DESC')
             ->findAll();
+        $this->sincronizarAnexosDoDisco((int) $id);
         $anexos = $anexoModel->porManifestacao($id);
 
         $todosUsuarios = $usuarioModel->ativos()->orderBy('nome')->findAll();
@@ -406,7 +418,7 @@ class ManifestacoesController extends BaseController
             'manifestacao' => $manifestacao,
             'historico' => $historico,
             'atribuicoes' => $atribuicoes,
-            'anexos' => $anexos,
+            'anexos' => is_array($anexos) ? $anexos : [],
             'usuariosParaEncaminhar' => $usuariosParaEncaminhar,
             'authService' => $authService,
             'slaService' => $slaService,
@@ -444,10 +456,12 @@ class ManifestacoesController extends BaseController
 
         $anexoModel = model(\App\Models\ManifestacaoAnexoModel::class);
         $anexos = $anexoModel->porManifestacao($id);
+        $this->sincronizarAnexosDoDisco($id);
+        $anexos = $anexoModel->porManifestacao($id);
 
         return view('ouvidoria/manifestacoes/edit', [
             'manifestacao' => $manifestacao,
-            'anexos' => $anexos,
+            'anexos' => is_array($anexos) ? $anexos : [],
         ]);
     }
 
@@ -504,7 +518,7 @@ class ManifestacoesController extends BaseController
             $encryptionService = service('encryption');
             $dek = $encryptionService->obterDEK($id);
             if (!$dek) {
-                throw new \RuntimeException('Chave de criptografia não encontrada.');
+                $dek = $encryptionService->gerarEArmazenarDEK($id);
             }
             $dadosCripto = $encryptionService->criptografarManifestacao([
                 'assunto' => $dados['assunto'],
@@ -517,12 +531,16 @@ class ManifestacoesController extends BaseController
             $historicoModel = model(ManifestacaoHistoricoModel::class);
             $historicoModel->registrar($id, $usuario['id'], ManifestacaoHistoricoModel::TIPO_EDICAO_CAMPOS, []);
 
-            $this->processarAnexos($id);
+            try {
+                $this->processarAnexos($id);
+            } catch (\Throwable $eAnexos) {
+                log_message('error', 'Erro ao processar anexos na edição da manifestação ' . $id . ': ' . $eAnexos->getMessage());
+            }
 
             $db->transComplete();
         } catch (\Throwable $e) {
             $db->transRollback();
-            log_message('error', $e->getMessage());
+            log_message('error', 'Erro ao atualizar manifestação ' . $id . ': ' . $e->getMessage());
             session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao atualizar manifestação.']));
             return redirect()->to(url_to('ouvidoria.manifestacoes.edit', $id))->withInput();
         }
@@ -1055,34 +1073,133 @@ class ManifestacoesController extends BaseController
     }
 
     /**
-     * Processa upload de anexos na criação.
+     * Exclui um anexo da manifestação (somente quem pode editar a manifestação).
+     */
+    public function excluirAnexo(int $anexoId)
+    {
+        $usuario = obterUsuarioLogado();
+        $anexoModel = model(\App\Models\ManifestacaoAnexoModel::class);
+        $anexo = $anexoModel->find($anexoId);
+
+        if (!$anexo) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Anexo não encontrado.']));
+            return redirect()->back();
+        }
+
+        $manifestacaoId = (int) $anexo['manifestacao_id'];
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($manifestacaoId);
+
+        if (!$manifestacao || !service('authorization')->podeEditarManifestacao($usuario ?? [], $manifestacao)) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado.']));
+            return redirect()->back();
+        }
+
+        $caminhoCompleto = WRITEPATH . $anexo['caminho_arquivo'];
+        if (is_file($caminhoCompleto)) {
+            @unlink($caminhoCompleto);
+        }
+
+        $anexoModel->delete($anexoId);
+
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Anexo excluído.']));
+        return redirect()->to(url_to('ouvidoria.manifestacoes.edit', $manifestacaoId));
+    }
+
+    /**
+     * Sincroniza anexos que existem no disco mas não constam na tabela manifestacao_anexos.
+     * Garante que arquivos em writable/uploads/ouvidoria/{id}/ apareçam no show e no edit.
+     */
+    private function sincronizarAnexosDoDisco(int $manifestacaoId): void
+    {
+        $config = config('Ouvidoria');
+        $uploadDir = WRITEPATH . $config->uploadsDir . DIRECTORY_SEPARATOR . $manifestacaoId . DIRECTORY_SEPARATOR;
+        if (!is_dir($uploadDir)) {
+            return;
+        }
+        $anexoModel = model(\App\Models\ManifestacaoAnexoModel::class);
+        $existentes = $anexoModel->where('manifestacao_id', $manifestacaoId)->findAll();
+        $caminhosJaRegistrados = array_flip(array_column($existentes, 'caminho_arquivo'));
+
+        $prefixoCaminho = $config->uploadsDir . '/' . $manifestacaoId . '/';
+        $arquivos = scandir($uploadDir);
+        if ($arquivos === false) {
+            return;
+        }
+        foreach ($arquivos as $nomeArquivo) {
+            if ($nomeArquivo === '.' || $nomeArquivo === '..') {
+                continue;
+            }
+            $pathCompleto = $uploadDir . $nomeArquivo;
+            if (!is_file($pathCompleto)) {
+                continue;
+            }
+            $caminhoArquivo = $prefixoCaminho . $nomeArquivo;
+            if (isset($caminhosJaRegistrados[$caminhoArquivo])) {
+                continue;
+            }
+            $tamanho = (int) @filesize($pathCompleto);
+            $nomeOriginal = $nomeArquivo;
+            if (preg_match('/^[a-f0-9]{32}_(.+)$/i', $nomeArquivo, $m)) {
+                $nomeOriginal = $m[1];
+            }
+            $mime = 'application/octet-stream';
+            if (function_exists('mime_content_type')) {
+                $mime = (string) @mime_content_type($pathCompleto) ?: $mime;
+            }
+            $conteudo = @file_get_contents($pathCompleto);
+            $hash = $conteudo ? hash('sha256', $conteudo) : null;
+            $anexoModel->insert([
+                'manifestacao_id' => $manifestacaoId,
+                'enviado_por_usuario_id' => null,
+                'nome_original' => $nomeOriginal,
+                'caminho_arquivo' => $caminhoArquivo,
+                'mime' => $mime,
+                'tamanho' => $tamanho,
+                'hash' => $hash,
+                'criado_em' => date('Y-m-d H:i:s'),
+            ]);
+            $caminhosJaRegistrados[$caminhoArquivo] = true;
+        }
+    }
+
+    /**
+     * Processa upload de anexos (criação e edição).
      */
     private function processarAnexos(int $manifestacaoId): void
     {
-        $arquivos = $this->request->getFileMultiple('anexos');
-        if (empty($arquivos)) {
-            $files = $this->request->getFiles();
-            $arquivos = $files['anexos'] ?? [];
-            if (!is_array($arquivos)) {
-                $arquivos = $arquivos ? [$arquivos] : [];
-            }
-        }
-        if (empty($arquivos)) {
-            return;
-        }
-
         $config = config('Ouvidoria');
         $anexoModel = model(\App\Models\ManifestacaoAnexoModel::class);
         $historicoModel = model(ManifestacaoHistoricoModel::class);
         $usuario = obterUsuarioLogado();
-
         $uploadDir = WRITEPATH . $config->uploadsDir . '/' . $manifestacaoId . '/';
-        if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+
+        // 1) Tentar via CodeIgniter
+        $arquivos = [];
+        try {
+            $arquivos = $this->request->getFileMultiple('anexos');
+            if (empty($arquivos)) {
+                $arquivos = $this->request->getFileMultiple('anexos[]');
+            }
+            if (empty($arquivos)) {
+                $files = $this->request->getFiles();
+                if (is_array($files)) {
+                    $arquivos = $files['anexos'] ?? $files['anexos[]'] ?? [];
+                }
+                if (!is_array($arquivos)) {
+                    $arquivos = $arquivos ? [$arquivos] : [];
+                }
+            }
+            $arquivos = array_values(is_array($arquivos) ? $arquivos : []);
+        } catch (\Throwable $e) {
+            log_message('error', 'processarAnexos getFiles: ' . $e->getMessage());
         }
 
         foreach ($arquivos as $file) {
-            if (!$file->isValid() || $file->getError() !== UPLOAD_ERR_OK) {
+            if (is_array($file)) {
+                continue;
+            }
+            if (!method_exists($file, 'isValid') || !$file->isValid() || $file->getError() !== UPLOAD_ERR_OK) {
                 continue;
             }
             if ($file->getSize() > $config->anexoMaxSize) {
@@ -1091,29 +1208,103 @@ class ManifestacoesController extends BaseController
             if (!in_array($file->getMimeType(), $config->anexoMimesPermitidos)) {
                 continue;
             }
+            $this->salvarUmAnexo($file, $manifestacaoId, $uploadDir, $config, $anexoModel, $historicoModel, $usuario);
+        }
 
-            $nomeRandom = bin2hex(random_bytes(16)) . '_' . $file->getClientName();
-            $caminho = $config->uploadsDir . '/' . $manifestacaoId . '/' . $nomeRandom;
+        // 2) Fallback: ler diretamente de $_FILES (ex.: anexos[] no form)
+        if (empty($arquivos) && !empty($_FILES['anexos'])) {
+            $f = $_FILES['anexos'];
+            $nomes = isset($f['name']) ? $f['name'] : [];
+            $tmpNames = isset($f['tmp_name']) ? $f['tmp_name'] : [];
+            $errors = isset($f['error']) ? $f['error'] : [];
+            $sizes = isset($f['size']) ? $f['size'] : [];
+            $types = isset($f['type']) ? $f['type'] : [];
+            if (!is_array($nomes)) {
+                $nomes = $nomes ? [$nomes] : [];
+                $tmpNames = $tmpNames ? [$tmpNames] : [];
+                $errors = $errors !== null ? [$errors] : [];
+                $sizes = $sizes !== null ? [$sizes] : [];
+                $types = $types !== null ? [$types] : [];
+            }
 
-            if ($file->move($uploadDir, $nomeRandom)) {
-                $conteudo = file_get_contents($uploadDir . $nomeRandom);
+            foreach ($nomes as $i => $nome) {
+                if (empty($nome) || ($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    continue;
+                }
+                $tmp = $tmpNames[$i] ?? '';
+                if (!is_uploaded_file($tmp)) {
+                    continue;
+                }
+                $size = (int) ($sizes[$i] ?? 0);
+                $mime = (string) ($types[$i] ?? '');
+                if ($size > $config->anexoMaxSize) {
+                    continue;
+                }
+                if (!in_array($mime, $config->anexoMimesPermitidos)) {
+                    continue;
+                }
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                $nomeRandom = bin2hex(random_bytes(16)) . '_' . $nome;
+                $destino = $uploadDir . $nomeRandom;
+                if (!move_uploaded_file($tmp, $destino)) {
+                    continue;
+                }
+                $caminho = $config->uploadsDir . '/' . $manifestacaoId . '/' . $nomeRandom;
+                $conteudo = file_get_contents($destino);
                 $hash = $conteudo ? hash('sha256', $conteudo) : null;
-
                 $anexoModel->insert([
                     'manifestacao_id' => $manifestacaoId,
                     'enviado_por_usuario_id' => $usuario['id'] ?? null,
-                    'nome_original' => $file->getClientName(),
+                    'nome_original' => $nome,
                     'caminho_arquivo' => $caminho,
-                    'mime' => $file->getMimeType(),
-                    'tamanho' => $file->getSize(),
+                    'mime' => $mime,
+                    'tamanho' => $size,
                     'hash' => $hash,
                     'criado_em' => date('Y-m-d H:i:s'),
                 ]);
-
                 $historicoModel->registrar($manifestacaoId, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_ANEXO_ADICIONADO, [
-                    'nome_arquivo' => $file->getClientName(),
+                    'nome_arquivo' => $nome,
                 ]);
             }
         }
+    }
+
+    /**
+     * Salva um arquivo recebido via UploadedFile do CI.
+     */
+    private function salvarUmAnexo(
+        $file,
+        int $manifestacaoId,
+        string $uploadDir,
+        $config,
+        $anexoModel,
+        $historicoModel,
+        array $usuario
+    ): void {
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+        $nomeRandom = bin2hex(random_bytes(16)) . '_' . $file->getClientName();
+        $caminho = $config->uploadsDir . '/' . $manifestacaoId . '/' . $nomeRandom;
+        if (!$file->move($uploadDir, $nomeRandom)) {
+            return;
+        }
+        $conteudo = file_get_contents($uploadDir . $nomeRandom);
+        $hash = $conteudo ? hash('sha256', $conteudo) : null;
+        $anexoModel->insert([
+            'manifestacao_id' => $manifestacaoId,
+            'enviado_por_usuario_id' => $usuario['id'] ?? null,
+            'nome_original' => $file->getClientName(),
+            'caminho_arquivo' => $caminho,
+            'mime' => $file->getMimeType(),
+            'tamanho' => $file->getSize(),
+            'hash' => $hash,
+            'criado_em' => date('Y-m-d H:i:s'),
+        ]);
+        $historicoModel->registrar($manifestacaoId, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_ANEXO_ADICIONADO, [
+            'nome_arquivo' => $file->getClientName(),
+        ]);
     }
 }

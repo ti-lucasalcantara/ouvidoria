@@ -19,13 +19,13 @@ Nova Manifestação - Ouvidoria
     <div class="card-header bg-white"><h5 class="mb-0">Dados da manifestação</h5></div>
     <div class="card-body">
         <div class="row g-3">
-            <div class="col-12 col-md-4">
-                <label class="form-label">Protocolo <small class="text-muted">(deixe vazio para gerar automaticamente)</small></label>
+            <div class="col-12 col-md-4 d-none">
+                <label class="form-label">Protocolo <small class="text-muted">(interno)</small></label>
                 <input type="text" name="protocolo" class="form-control" value="<?= esc(old('protocolo')) ?>" placeholder="OUV-2025-000001">
             </div>
             <div class="col-12 col-md-4">
                 <label class="form-label">Protocolo Fala.BR</label>
-                <input type="text" name="protocolo_falabr" class="form-control" value="<?= esc(old('protocolo_falabr')) ?>" placeholder="Opcional">
+                <input type="text" name="protocolo_falabr" class="form-control" value="<?= esc(old('protocolo_falabr')) ?>" placeholder="Protocolo gerado pelo Fala.BR">
             </div>
             <div class="col-12 col-md-4">
                 <label class="form-label">Origem</label>
@@ -44,7 +44,7 @@ Nova Manifestação - Ouvidoria
                 <div id="editor-descricao" style="height: 200px;"></div>
                 <input type="hidden" name="descricao" id="descricao" required>
             </div>
-            <div class="col-12">
+            <div class="col-12 d-none">
                 <label class="form-label">Dados de identificação <small class="text-muted">(JSON ou texto livre)</small></label>
                 <textarea name="dados_identificacao" class="form-control" rows="2" placeholder='{"nome":"...","contato":"..."}'><?= esc(old('dados_identificacao')) ?></textarea>
             </div>
@@ -57,12 +57,12 @@ Nova Manifestação - Ouvidoria
                 </select>
             </div>
             <div class="col-12 col-md-4">
-                <label class="form-label">Prazo SLA (dias)</label>
+                <label class="form-label">Prazo (dias)</label>
                 <input type="number" name="sla_prazo_em_dias" class="form-control" value="<?= esc(old('sla_prazo_em_dias', 30)) ?>" min="1">
             </div>
             <div class="col-12">
                 <label class="form-label">Anexos</label>
-                <input type="file" id="anexosInput" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">
+                <input type="file" id="anexosInput" name="anexos[]" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">
                 <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btnAdicionarAnexo"><i class="fas fa-plus me-1"></i>Adicionar arquivos</button>
                 <div class="table-responsive mt-3">
                     <table class="table table-sm table-bordered" id="tabelaAnexosPreview">
@@ -95,6 +95,8 @@ Nova Manifestação - Ouvidoria
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var anexosPendentes = [];
+    var inputAnexos = document.getElementById('anexosInput');
+
     var quill = new Quill('#editor-descricao', {
         theme: 'snow',
         modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
@@ -102,6 +104,12 @@ document.addEventListener('DOMContentLoaded', function() {
     quill.on('text-change', function() {
         document.getElementById('descricao').value = quill.root.innerHTML;
     });
+
+    function syncInputAnexos() {
+        var dt = new DataTransfer();
+        anexosPendentes.forEach(function(f) { dt.items.add(f); });
+        inputAnexos.files = dt.files;
+    }
 
     function formatBytes(bytes) {
         if (bytes === 0) return '0 B';
@@ -122,48 +130,29 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('click', function() {
                 var idx = parseInt(btn.getAttribute('data-idx'), 10);
                 anexosPendentes.splice(idx, 1);
+                syncInputAnexos();
                 renderTabelaAnexos();
             });
         });
     }
 
-    document.getElementById('anexosInput').addEventListener('change', function() {
+    inputAnexos.addEventListener('change', function() {
         var files = this.files;
         for (var i = 0; i < files.length; i++) {
             anexosPendentes.push(files[i]);
         }
-        this.value = '';
+        syncInputAnexos();
         renderTabelaAnexos();
+        this.value = '';
     });
 
     document.getElementById('btnAdicionarAnexo').addEventListener('click', function() {
-        document.getElementById('anexosInput').click();
+        inputAnexos.click();
     });
 
     document.querySelector('form').addEventListener('submit', function(e) {
         document.getElementById('descricao').value = quill.root.innerHTML;
-        if (anexosPendentes.length > 0) {
-            e.preventDefault();
-            var form = this;
-            var formData = new FormData(form);
-            anexosPendentes.forEach(function(file) {
-                formData.append('anexos[]', file);
-            });
-            var btn = form.querySelector('button[type="submit"]');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...'; }
-            fetch(form.action, {
-                method: 'POST',
-                body: formData
-            }).then(function(r) {
-                if (r.redirected) {
-                    window.location = r.url;
-                } else {
-                    return r.text().then(function(t) { window.location.reload(); });
-                }
-            }).catch(function() {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar'; }
-            });
-        }
+        syncInputAnexos();
     });
 });
 </script>

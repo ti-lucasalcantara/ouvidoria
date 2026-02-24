@@ -23,7 +23,7 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12 col-md-4">
-                <label class="form-label">Protocolo <span class="text-danger">*</span></label>
+                <label class="form-label">Protocolo <small class="text-muted">(interno)</small></label>
                 <input type="text" name="protocolo" class="form-control" value="<?= esc(old('protocolo', $manifestacao['protocolo'] ?? '')) ?>" required>
             </div>
             <div class="col-12 col-md-4">
@@ -48,7 +48,7 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 <input type="hidden" name="descricao" id="descricao" required>
                 <textarea id="descricao-inicial" class="d-none"><?= esc(old('descricao', $manifestacao['descricao'] ?? '')) ?></textarea>
             </div>
-            <div class="col-12">
+            <div class="col-12 d-none">
                 <label class="form-label">Dados de identificação <small class="text-muted">(JSON ou texto livre)</small></label>
                 <textarea name="dados_identificacao" class="form-control" rows="2" placeholder='{"nome":"...","contato":"..."}'><?= esc(old('dados_identificacao', $manifestacao['dados_identificacao'] ?? '')) ?></textarea>
             </div>
@@ -61,12 +61,12 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 </select>
             </div>
             <div class="col-12 col-md-4">
-                <label class="form-label">Prazo SLA (dias)</label>
+                <label class="form-label">Prazo (dias)</label>
                 <input type="number" name="sla_prazo_em_dias" class="form-control" value="<?= esc(old('sla_prazo_em_dias', $manifestacao['sla_prazo_em_dias'] ?? 30)) ?>" min="1">
             </div>
             <div class="col-12">
                 <label class="form-label">Adicionar anexos</label>
-                <input type="file" id="anexosInput" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">
+                <input type="file" id="anexosInput" name="anexos[]" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">
                 <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btnAdicionarAnexo"><i class="fas fa-plus me-1"></i>Adicionar arquivos</button>
                 <div class="table-responsive mt-3">
                     <table class="table table-sm table-bordered" id="tabelaAnexosPreview">
@@ -84,14 +84,21 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 </div>
                 <small class="text-muted">Os anexos serão salvos ao clicar em Salvar. Os anexos existentes são mantidos.</small>
             </div>
-            <?php if (!empty($anexos)): ?>
+            <?php
+            $anexosExistentes = isset($anexos) && is_array($anexos) ? $anexos : [];
+            if (!empty($anexosExistentes)):
+            ?>
             <div class="col-12">
                 <label class="form-label">Anexos atuais</label>
-                <div class="d-flex flex-wrap gap-2">
-                    <?php foreach ($anexos as $a): ?>
-                    <a href="<?= url_to('ouvidoria.anexos.download', $a['id']) ?>" class="btn btn-sm btn-outline-secondary" target="_blank">
-                        <i class="fas fa-download me-1"></i><?= esc($a['nome_original']) ?>
-                    </a>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <?php foreach ($anexosExistentes as $a): ?>
+                    <div class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-light">
+                        <a href="<?= url_to('ouvidoria.anexos.abrir', $a['id']) ?>" class="btn btn-sm btn-outline-secondary text-nowrap" target="_blank" rel="noopener" title="Abrir">
+                            <i class="fas fa-external-link-alt me-1"></i><?= esc($a['nome_original'] ?? 'Anexo') ?>
+                        </a>
+                        <a href="<?= url_to('ouvidoria.anexos.download', $a['id']) ?>" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener" title="Baixar"><i class="fas fa-download"></i></a>
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-excluir-anexo" title="Excluir anexo" data-anexo-id="<?= (int) $a['id'] ?>" data-excluir-url="<?= esc(url_to('ouvidoria.manifestacoes.excluirAnexo', $a['id'])) ?>"><i class="fas fa-trash"></i></button>
+                    </div>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -111,7 +118,8 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var anexosPendentes = [];
-    var descricaoInicial = document.getElementById('descricao-inicial')?.value || '';
+    var inputAnexos = document.getElementById('anexosInput');
+    var descricaoInicial = document.getElementById('descricao-inicial') ? document.getElementById('descricao-inicial').value : '';
     var quill = new Quill('#editor-descricao', {
         theme: 'snow',
         modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
@@ -121,6 +129,12 @@ document.addEventListener('DOMContentLoaded', function() {
     quill.on('text-change', function() {
         document.getElementById('descricao').value = quill.root.innerHTML;
     });
+
+    function syncInputAnexos() {
+        var dt = new DataTransfer();
+        anexosPendentes.forEach(function(f) { dt.items.add(f); });
+        inputAnexos.files = dt.files;
+    }
 
     function formatBytes(bytes) {
         if (bytes === 0) return '0 B';
@@ -141,48 +155,66 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.addEventListener('click', function() {
                 var idx = parseInt(btn.getAttribute('data-idx'), 10);
                 anexosPendentes.splice(idx, 1);
+                syncInputAnexos();
                 renderTabelaAnexos();
             });
         });
     }
 
-    document.getElementById('anexosInput').addEventListener('change', function() {
+    inputAnexos.addEventListener('change', function() {
         var files = this.files;
         for (var i = 0; i < files.length; i++) {
             anexosPendentes.push(files[i]);
         }
-        this.value = '';
+        syncInputAnexos();
         renderTabelaAnexos();
+        this.value = '';
     });
 
     document.getElementById('btnAdicionarAnexo').addEventListener('click', function() {
-        document.getElementById('anexosInput').click();
+        inputAnexos.click();
     });
 
     document.querySelector('form').addEventListener('submit', function(e) {
         document.getElementById('descricao').value = quill.root.innerHTML;
-        if (anexosPendentes.length > 0) {
-            e.preventDefault();
-            var form = this;
-            var formData = new FormData(form);
-            anexosPendentes.forEach(function(file) {
-                formData.append('anexos[]', file);
-            });
-            var btn = form.querySelector('button[type="submit"]');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...'; }
-            fetch(form.action, {
-                method: 'POST',
-                body: formData
-            }).then(function(r) {
-                if (r.redirected) {
-                    window.location = r.url;
-                } else {
-                    window.location.reload();
-                }
-            }).catch(function() {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar alterações'; }
-            });
+        syncInputAnexos();
+    });
+
+    $(document).on('click', '.btn-excluir-anexo', function() {
+        var btn = this;
+        var url = $(btn).data('excluir-url');
+        if (!url) return;
+        function doSubmit() {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            form.style.display = 'none';
+            var csrf = document.querySelector('input[name="csrf_test_name"]') || document.querySelector('input[name="' + (window.CSRF_TOKEN_NAME || 'csrf_test_name') + '"]');
+            if (csrf) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = csrf.name;
+                input.value = csrf.value;
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
         }
+        if (typeof Swal === 'undefined') {
+            if (confirm('Excluir anexo? Esta ação não pode ser desfeita.')) doSubmit();
+            return;
+        }
+        Swal.fire({
+            title: 'Excluir anexo?',
+            text: 'Esta ação não pode ser desfeita.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Excluir',
+            cancelButtonText: 'Cancelar'
+        }).then(function(result) {
+            if (result.isConfirmed) doSubmit();
+        });
     });
 });
 </script>

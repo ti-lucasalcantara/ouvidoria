@@ -69,10 +69,13 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-paperclip me-2"></i>Anexos</h5></div>
             <div class="card-body">
+                <?php $anexos = isset($anexos) && is_array($anexos) ? $anexos : []; ?>
                 <?php foreach ($anexos as $a): ?>
-                <a href="<?= url_to('ouvidoria.anexos.download', $a['id']) ?>" class="btn btn-sm btn-outline-secondary me-2 mb-2" target="_blank">
-                    <i class="fas fa-download me-1"></i><?= esc($a['nome_original']) ?>
-                </a>
+                <span class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-light me-2 mb-2">
+                    <a href="<?= url_to('ouvidoria.anexos.abrir', $a['id']) ?>" class="btn btn-sm btn-outline-secondary text-nowrap" target="_blank" rel="noopener" title="Abrir">
+                        <i class="fas fa-external-link-alt me-1"></i><?= esc($a['nome_original'] ?? 'Anexo') ?>
+                    </a>
+                </span>
                 <?php endforeach; ?>
                 <?php if (empty($anexos)): ?>
                 <p class="text-muted small mb-0">Nenhum anexo.</p>
@@ -353,7 +356,7 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                     <label class="form-label">Usuários <span class="text-danger">*</span></label>
                     <select name="usuarios[]" id="selectUsuariosEncaminhar" class="form-select select2-multiple" multiple <?= empty($usuariosParaEncaminhar) ? 'disabled' : 'required' ?>>
                         <?php foreach ($usuariosParaEncaminhar as $u): ?>
-                        <option value="<?= (int) $u['id'] ?>"><?= esc($u['nome']) ?> (<?= esc($u['role']) ?>)</option>
+                        <option value="<?= (int) $u['id'] ?>"><?= esc($u['nome']) ?></option>
                         <?php endforeach; ?>
                     </select>
                     <?php if (empty($usuariosParaEncaminhar)): ?>

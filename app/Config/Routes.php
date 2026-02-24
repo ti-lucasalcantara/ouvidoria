@@ -33,9 +33,11 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->post('manifestacoes/excluirComentario/(:num)', 'ManifestacoesController::excluirComentario/$1', ['as' => 'ouvidoria.manifestacoes.excluirComentario']);
     $routes->post('manifestacoes/editarAtribuicao/(:num)', 'ManifestacoesController::editarAtribuicao/$1', ['as' => 'ouvidoria.manifestacoes.editarAtribuicao']);
     $routes->post('manifestacoes/excluirAtribuicao/(:num)', 'ManifestacoesController::excluirAtribuicao/$1', ['as' => 'ouvidoria.manifestacoes.excluirAtribuicao']);
+    $routes->post('manifestacoes/excluirAnexo/(:num)', 'ManifestacoesController::excluirAnexo/$1', ['as' => 'ouvidoria.manifestacoes.excluirAnexo']);
 
-    // Anexos (download)
+    // Anexos (download e abrir no navegador)
     $routes->get('anexos/download/(:num)', 'AnexosController::download/$1', ['as' => 'ouvidoria.anexos.download']);
+    $routes->get('anexos/abrir/(:num)', 'AnexosController::abrir/$1', ['as' => 'ouvidoria.anexos.abrir']);
 
     // Setores (admin)
     $routes->get('setores', 'SetoresController::index', ['as' => 'ouvidoria.setores.index']);
