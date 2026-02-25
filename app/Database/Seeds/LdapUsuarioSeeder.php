@@ -68,8 +68,10 @@ class LdapUsuarioSeeder extends Seeder
         $usuarioModel->skipValidation(true);
 
         foreach ($logins as $item) {
-            $role  = $item['role'];
-            $login = $item['login'];
+            $role       = $item['role'];
+            $login      = $item['login'];
+            $fiscal_id  = $item['fiscal_id'] ?? null;
+
             echo "Consultando LDAP para {$login}" . PHP_EOL;
             $response = $this->consultarLdap($login);
             if (! $response || ($response['type'] ?? '') === 'error') {
@@ -86,6 +88,7 @@ class LdapUsuarioSeeder extends Seeder
                 'email'  => $email,
                 'login'  => $response['dados']['usuario'] ?? $login,
                 'role'   => $role ?? 'usuario',
+                'fiscal_id'   => $fiscal_id ?? null,
                 'ativo'  => 1,
             ];
             if (! empty($user['id'])) {
