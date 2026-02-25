@@ -22,6 +22,7 @@ class UsuarioModel extends Model
         'email',
         'login',
         'role',
+        'fiscal_id',
         'ativo',
         'created_at',
         'updated_at',
@@ -42,7 +43,7 @@ class UsuarioModel extends Model
     protected $validationRules = [
         'nome'  => 'required|min_length[2]|max_length[150]',
         'email' => 'required|valid_email|max_length[150]',
-        'role'  => 'required|in_list[administrador,ouvidor,gerente,usuario]',
+        'role'  => 'required|in_list[administrador,ouvidor,gerente,usuario,fiscal]',
         'ativo' => 'in_list[0,1]',
     ];
 

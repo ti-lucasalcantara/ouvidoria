@@ -63,7 +63,7 @@ class UsuariosController extends BaseController
         $dados = $this->request->getPost();
         $dados['ativo'] = $dados['ativo'] ?? 1;
 
-        $regras = ['nome' => 'required', 'email' => 'required|valid_email|is_unique[usuarios.email]', 'role' => 'required|in_list[administrador,ouvidor,gerente,usuario]'];
+        $regras = ['nome' => 'required', 'email' => 'required|valid_email|is_unique[usuarios.email]', 'role' => 'required|in_list[administrador,ouvidor,gerente,usuario,fiscal]'];
         if (!$this->validate($regras)) {
             session()->setFlashdata(getMessageFail('toast', ['text' => implode(' ', $this->validator->getErrors())]));
             return redirect()->back()->withInput();
