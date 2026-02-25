@@ -23,6 +23,7 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->get('manifestacoes/show/(:num)', 'ManifestacoesController::show/$1', ['as' => 'ouvidoria.manifestacoes.show']);
     $routes->get('manifestacoes/edit/(:num)', 'ManifestacoesController::edit/$1', ['as' => 'ouvidoria.manifestacoes.edit']);
     $routes->post('manifestacoes/update/(:num)', 'ManifestacoesController::update/$1', ['as' => 'ouvidoria.manifestacoes.update']);
+    $routes->post('manifestacoes/updateInscricaoPj/(:num)', 'ManifestacoesController::updateInscricaoPj/$1', ['as' => 'ouvidoria.manifestacoes.updateInscricaoPj']);
     $routes->post('manifestacoes/updateStatus/(:num)', 'ManifestacoesController::updateStatus/$1', ['as' => 'ouvidoria.manifestacoes.updateStatus']);
     $routes->post('manifestacoes/encaminhar/(:num)', 'ManifestacoesController::encaminhar/$1', ['as' => 'ouvidoria.manifestacoes.encaminhar']);
     $routes->post('manifestacoes/devolver/(:num)', 'ManifestacoesController::devolver/$1', ['as' => 'ouvidoria.manifestacoes.devolver']);

@@ -64,6 +64,11 @@ Editar Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 <label class="form-label">Prazo (dias)</label>
                 <input type="number" name="sla_prazo_em_dias" class="form-control" value="<?= esc(old('sla_prazo_em_dias', $manifestacao['sla_prazo_em_dias'] ?? 30)) ?>" min="1">
             </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Registro do Estabelecimento</label>
+                <input type="number" name="inscricao_pj_id" class="form-control" value="<?= esc(old('inscricao_pj_id', $manifestacao['inscricao_pj_id'] ?? '')) ?>" placeholder="Número do estabelecimento" min="0" step="1">
+                <small class="text-muted">Opcional. Identificador do estabelecimento que recebe a manifestação.</small>
+            </div>
             <div class="col-12">
                 <label class="form-label">Adicionar anexos</label>
                 <input type="file" id="anexosInput" name="anexos[]" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">

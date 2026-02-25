@@ -221,6 +221,7 @@ class ManifestacoesController extends BaseController
         $dataManifestacao = $this->request->getPost('data_manifestacao') ?: date('Y-m-d');
         $dataLimite = $slaService->calcularDataLimite($dataManifestacao . ' 00:00:00', $prazoDias);
 
+        $inscricaoPjId = $this->request->getPost('inscricao_pj_id');
         $dados = [
             'protocolo' => $protocolo,
             'protocolo_falabr' => $this->request->getPost('protocolo_falabr'),
@@ -234,6 +235,7 @@ class ManifestacoesController extends BaseController
             'sla_prazo_em_dias' => $prazoDias,
             'data_limite_sla' => $dataLimite,
             'criado_por_usuario_id' => $usuario['id'],
+            'inscricao_pj_id' => $inscricaoPjId !== '' && $inscricaoPjId !== null ? (int) $inscricaoPjId : null,
         ];
 
         $db = \Config\Database::connect();
@@ -429,6 +431,7 @@ class ManifestacoesController extends BaseController
             'statusLabelUsuario' => $statusLabelUsuario,
             'atribuicaoDevolucaoUsuario' => $atribuicaoDevolucaoUsuario,
             'podeEditarManifestacao' => $podeEditarManifestacao,
+            'usuario' => $usuario,
         ]);
     }
 
@@ -499,6 +502,7 @@ class ManifestacoesController extends BaseController
         $dataManifestacao = $this->request->getPost('data_manifestacao') ?: ($manifestacao['data_manifestacao'] ?? date('Y-m-d'));
         $dataLimite = $slaService->calcularDataLimite($dataManifestacao . ' 00:00:00', $prazoDias);
 
+        $inscricaoPjId = $this->request->getPost('inscricao_pj_id');
         $dados = [
             'protocolo' => $this->request->getPost('protocolo'),
             'protocolo_falabr' => $this->request->getPost('protocolo_falabr'),
@@ -510,6 +514,7 @@ class ManifestacoesController extends BaseController
             'prioridade' => $this->request->getPost('prioridade') ?: 'media',
             'sla_prazo_em_dias' => $prazoDias,
             'data_limite_sla' => $dataLimite,
+            'inscricao_pj_id' => $inscricaoPjId !== '' && $inscricaoPjId !== null ? (int) $inscricaoPjId : null,
         ];
 
         $db = \Config\Database::connect();
@@ -546,6 +551,43 @@ class ManifestacoesController extends BaseController
         }
 
         session()->setFlashdata(getMessageSucess('toast', ['text' => 'Manifestação atualizada com sucesso.']));
+        return redirect()->to(url_to('ouvidoria.manifestacoes.show', $id));
+    }
+
+    /**
+     * Atualiza apenas o Registro do Estabelecimento (inscricao_pj_id).
+     * Permitido para ouvidor/admin (em qualquer momento) e para gerente (quem recebeu a manifestação).
+     */
+    public function updateInscricaoPj(int $id)
+    {
+        $usuario = obterUsuarioLogado();
+        if (!$usuario) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado.']));
+            return redirect()->back();
+        }
+
+        $authService = service('authorization');
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($id);
+
+        if (!$manifestacao || !$authService->podeAcessarPaginaManifestacao($usuario, $manifestacao)) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado ou manifestação não encontrada.']));
+            return redirect()->back();
+        }
+
+        $role = $usuario['role'] ?? '';
+        $podeDefinir = in_array($role, ['administrador', 'ouvidor']) || $role === 'gerente';
+        if (!$podeDefinir) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Você não pode definir o estabelecimento.']));
+            return redirect()->back();
+        }
+
+        $inscricaoPjId = $this->request->getPost('inscricao_pj_id');
+        $valor = ($inscricaoPjId !== '' && $inscricaoPjId !== null) ? (int) $inscricaoPjId : null;
+
+        $manifestacaoModel->update($id, ['inscricao_pj_id' => $valor]);
+
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Registro do estabelecimento atualizado.']));
         return redirect()->to(url_to('ouvidoria.manifestacoes.show', $id));
     }
 

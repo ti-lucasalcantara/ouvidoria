@@ -48,9 +48,56 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 <small class="text-muted d-block">Origem</small>
                 <?= esc($manifestacao['origem'] ?? 'Fala.BR') ?>
             </div>
+            <div class="col-12 col-md-4">
+                <small class="text-muted d-block">Registro do Estabelecimento</small>
+                <?php
+                $usuario = $usuario ?? [];
+                $inscricaoPjId = $manifestacao['inscricao_pj_id'] ?? null;
+                $podeIdentificarEstabelecimento = in_array($usuario['role'] ?? '', ['gerente', 'administrador']);
+                ?>
+                <?php if ($inscricaoPjId !== null && $inscricaoPjId !== ''): ?>
+                    <span class="me-2"><?= esc($inscricaoPjId) ?></span>
+                <?php else: ?>
+                    <span class="text-muted">—</span>
+                <?php endif; ?>
+                <?php if ($podeIdentificarEstabelecimento): ?>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" data-bs-toggle="modal" data-bs-target="#modalRegistroEstabelecimento" title="Identificar estabelecimento">
+                        <i class="fas fa-building me-1"></i>Identificar estabelecimento
+                    </button>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 </div>
+
+<?php if (!empty($podeIdentificarEstabelecimento)): ?>
+<!-- Modal: Identificar estabelecimento (gerente / administrador) -->
+<div class="modal fade" id="modalRegistroEstabelecimento" tabindex="-1" aria-labelledby="modalRegistroEstabelecimentoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <?= form_open(url_to('ouvidoria.manifestacoes.updateInscricaoPj', $manifestacao['id'])) ?>
+            <?= csrf_field() ?>
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalRegistroEstabelecimentoLabel"><i class="fas fa-building me-2"></i>Identificar estabelecimento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">Informe o número do estabelecimento que recebeu esta manifestação.</p>
+                <div class="mb-0">
+                    <label for="modalInscricaoPjId" class="form-label">Número do estabelecimento</label>
+                    <input type="number" name="inscricao_pj_id" id="modalInscricaoPjId" class="form-control" value="<?= esc($manifestacao['inscricao_pj_id'] ?? '') ?>" placeholder="Ex.: 12345" min="0" step="1">
+                    <small class="text-muted">Deixe em branco para limpar.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Salvar</button>
+            </div>
+            <?= form_close() ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="row">
     <div class="col-lg-8">

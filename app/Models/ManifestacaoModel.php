@@ -31,6 +31,7 @@ class ManifestacaoModel extends Model
         'data_primeiro_encaminhamento',
         'data_finalizacao',
         'criado_por_usuario_id',
+        'inscricao_pj_id',
         'created_at',
         'updated_at',
     ];
