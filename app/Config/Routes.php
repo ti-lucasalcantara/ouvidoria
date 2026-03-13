@@ -36,6 +36,8 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->post('manifestacoes/excluirAtribuicao/(:num)', 'ManifestacoesController::excluirAtribuicao/$1', ['as' => 'ouvidoria.manifestacoes.excluirAtribuicao']);
     $routes->post('manifestacoes/excluirAnexo/(:num)', 'ManifestacoesController::excluirAnexo/$1', ['as' => 'ouvidoria.manifestacoes.excluirAnexo']);
     $routes->post('manifestacoes/responderOuvidor/(:num)', 'ManifestacoesController::responderOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.responderOuvidor']);
+    $routes->post('manifestacoes/editarRespostaOuvidor/(:num)', 'ManifestacoesController::editarRespostaOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.editarRespostaOuvidor']);
+    $routes->post('manifestacoes/excluirRespostaOuvidor/(:num)', 'ManifestacoesController::excluirRespostaOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.excluirRespostaOuvidor']);
 
     // Anexos (download e abrir no navegador)
     $routes->get('anexos/download/(:num)', 'AnexosController::download/$1', ['as' => 'ouvidoria.anexos.download']);

@@ -460,6 +460,11 @@ class ManifestacoesController extends BaseController
             }
         }
 
+        foreach ($respostasOuvidor as &$r) {
+            $r['pode_editar_excluir'] = $authService->podeEditarExcluirRespostaOuvidor($usuario ?? [], $manifestacao, $r);
+        }
+        unset($r);
+
         return view('ouvidoria/manifestacoes/show', [
             'manifestacao' => $manifestacao,
             'historico' => $historico,
@@ -1281,12 +1286,13 @@ class ManifestacoesController extends BaseController
                 throw new \RuntimeException('Falha ao inserir resposta.');
             }
 
-            $this->processarAnexosResposta($respostaId);
+            $this->processarAnexosResposta($respostaId, (int) $id);
 
             $manifestacaoModel->update($id, ['status' => 'respondida']);
 
             $historicoModel->registrar($id, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_RESPOSTA_OUVIDOR, [
                 'resposta_id' => $respostaId,
+                'conteudo' => trim((string) $conteudo),
             ]);
 
             $db->transComplete();
@@ -1308,15 +1314,206 @@ class ManifestacoesController extends BaseController
     }
 
     /**
-     * Processa upload de anexos da resposta ao ouvidor.
+     * Edita uma resposta ao ouvidor (quem respondeu ou admin). Registra no histórico.
      */
-    private function processarAnexosResposta(int $respostaOuvidorId): void
+    public function editarRespostaOuvidor(int $id)
+    {
+        $usuario = obterUsuarioLogado();
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($id);
+        if (!$manifestacao || !service('authorization')->podeAcessarPaginaManifestacao($usuario ?? [], $manifestacao)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Acesso negado.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado.']));
+            return redirect()->back();
+        }
+
+        $respostaId = (int) $this->request->getPost('resposta_id');
+        if ($respostaId <= 0) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Resposta inválida.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Resposta inválida.']));
+            return redirect()->back();
+        }
+
+        $respostaModel = model(\App\Models\RespostaOuvidorModel::class);
+        $resposta = $respostaModel->find($respostaId);
+        if (!$resposta || (int) $resposta['manifestacao_id'] !== $id) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Resposta não encontrada.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Resposta não encontrada.']));
+            return redirect()->back();
+        }
+
+        if (!service('authorization')->podeEditarExcluirRespostaOuvidor($usuario ?? [], $manifestacao, $resposta)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Você não pode editar esta resposta.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Você não pode editar esta resposta.']));
+            return redirect()->back();
+        }
+
+        $conteudoNovo = $this->request->getPost('conteudo');
+        if ($conteudoNovo === null || trim((string) $conteudoNovo) === '') {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Informe o conteúdo da resposta.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Informe o conteúdo da resposta.']));
+            return redirect()->back();
+        }
+
+        try {
+            $encryptionService = service('encryption');
+            $dek = $encryptionService->obterDEK($id);
+        } catch (\InvalidArgumentException $e) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Configuração de criptografia indisponível.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Configuração de criptografia indisponível.']));
+            return redirect()->back();
+        }
+        if (!$dek) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Não foi possível criptografar.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Não foi possível criptografar.']));
+            return redirect()->back();
+        }
+
+        $conteudoAnterior = '';
+        try {
+            $conteudoAnterior = $encryptionService->descriptografarCampo($resposta['conteudo'] ?? '', $dek);
+        } catch (\Throwable $e) {
+            // ignora
+        }
+
+        $conteudoCripto = $encryptionService->criptografarCampo(trim((string) $conteudoNovo), $dek);
+        $historicoModel = model(ManifestacaoHistoricoModel::class);
+
+        $db = \Config\Database::connect();
+        $db->transStart();
+        try {
+            $respostaModel->update($respostaId, [
+                'conteudo' => $conteudoCripto,
+            ]);
+            $historicoModel->registrar($id, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_RESPOSTA_OUVIDOR_EDITADA, [
+                'resposta_id' => $respostaId,
+                'conteudo_anterior' => $conteudoAnterior,
+                'conteudo_novo' => trim((string) $conteudoNovo),
+            ]);
+            $db->transComplete();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'editarRespostaOuvidor: ' . $e->getMessage());
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Erro ao atualizar resposta.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao atualizar resposta.']));
+            return redirect()->back();
+        }
+
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => 'Resposta atualizada.']);
+        }
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Resposta atualizada.']));
+        return redirect()->to(url_to('ouvidoria.manifestacoes.show', $id));
+    }
+
+    /**
+     * Exclui uma resposta ao ouvidor (quem respondeu ou admin). Registra no histórico.
+     */
+    public function excluirRespostaOuvidor(int $id)
+    {
+        $usuario = obterUsuarioLogado();
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($id);
+        if (!$manifestacao || !service('authorization')->podeAcessarPaginaManifestacao($usuario ?? [], $manifestacao)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Acesso negado.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado.']));
+            return redirect()->back();
+        }
+
+        $respostaId = (int) $this->request->getPost('resposta_id');
+        if ($respostaId <= 0) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Resposta inválida.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Resposta inválida.']));
+            return redirect()->back();
+        }
+
+        $respostaModel = model(\App\Models\RespostaOuvidorModel::class);
+        $resposta = $respostaModel->find($respostaId);
+        if (!$resposta || (int) $resposta['manifestacao_id'] !== $id) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Resposta não encontrada.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Resposta não encontrada.']));
+            return redirect()->back();
+        }
+
+        if (!service('authorization')->podeEditarExcluirRespostaOuvidor($usuario ?? [], $manifestacao, $resposta)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Você não pode excluir esta resposta.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Você não pode excluir esta resposta.']));
+            return redirect()->back();
+        }
+
+        $conteudoExcluido = '';
+        try {
+            $encryptionService = service('encryption');
+            $dek = $encryptionService->obterDEK($id);
+            if ($dek) {
+                $conteudoExcluido = $encryptionService->descriptografarCampo($resposta['conteudo'] ?? '', $dek);
+            }
+        } catch (\Throwable $e) {
+            // ignora
+        }
+
+        $config = config('Ouvidoria');
+        $uploadDir = WRITEPATH . $config->uploadsDir . DIRECTORY_SEPARATOR . $id . DIRECTORY_SEPARATOR;
+        $anexoModel = model(\App\Models\RespostaOuvidorAnexoModel::class);
+        $anexos = $anexoModel->porResposta($respostaId);
+        foreach ($anexos as $a) {
+            $path = WRITEPATH . $a['caminho_arquivo'];
+            if (is_file($path)) {
+                @unlink($path);
+            }
+            $anexoModel->delete($a['id']);
+        }
+
+        $respostaModel->delete($respostaId);
+        $historicoModel = model(ManifestacaoHistoricoModel::class);
+        $historicoModel->registrar($id, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_RESPOSTA_OUVIDOR_EXCLUIDA, [
+            'resposta_id' => $respostaId,
+            'conteudo' => $conteudoExcluido,
+        ]);
+
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => 'Resposta excluída.']);
+        }
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Resposta excluída.']));
+        return redirect()->to(url_to('ouvidoria.manifestacoes.show', $id));
+    }
+
+    /**
+     * Processa upload de anexos da resposta ao ouvidor.
+     * Grava em WRITEPATH/uploads/ouvidoria/{manifestacaoId}/ com prefixo resposta_{respostaId}_.
+     */
+    private function processarAnexosResposta(int $respostaOuvidorId, int $manifestacaoId): void
     {
         $config = config('Ouvidoria');
-        $uploadDir = WRITEPATH . $config->uploadsDir . '/respostas/' . $respostaOuvidorId . '/';
+        $uploadDir = WRITEPATH . $config->uploadsDir . DIRECTORY_SEPARATOR . $manifestacaoId . DIRECTORY_SEPARATOR;
+        $prefixoCaminho = $config->uploadsDir . '/' . $manifestacaoId . '/';
+        $prefixoNome = 'resposta_' . $respostaOuvidorId . '_';
         $anexoModel = model(\App\Models\RespostaOuvidorAnexoModel::class);
         $usuario = obterUsuarioLogado();
-        $prefixoCaminho = $config->uploadsDir . '/respostas/' . $respostaOuvidorId . '/';
 
         $arquivos = $this->request->getFileMultiple('anexos_resposta');
         if (empty($arquivos)) {
@@ -1332,16 +1529,19 @@ class ManifestacoesController extends BaseController
             if (!method_exists($file, 'isValid') || !$file->isValid() || $file->getError() !== UPLOAD_ERR_OK) {
                 continue;
             }
-            if ($file->getSize() > $config->anexoMaxSize) {
+            $tamanho = $this->obterTamanhoArquivoSeguro($file);
+            $mime = $this->obterMimeTypeSeguro($file);
+            if ($tamanho > $config->anexoMaxSize) {
                 continue;
             }
-            if (!in_array($file->getMimeType(), $config->anexoMimesPermitidos)) {
+            if (!in_array($mime, $config->anexoMimesPermitidos)) {
                 continue;
             }
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
             }
-            $nomeRandom = bin2hex(random_bytes(16)) . '_' . $file->getClientName();
+            $nomeOriginal = $file->getClientName();
+            $nomeRandom = $prefixoNome . bin2hex(random_bytes(16)) . '_' . $nomeOriginal;
             if (!$file->move($uploadDir, $nomeRandom)) {
                 continue;
             }
@@ -1351,10 +1551,10 @@ class ManifestacoesController extends BaseController
             $anexoModel->insert([
                 'resposta_ouvidor_id' => $respostaOuvidorId,
                 'enviado_por_usuario_id' => $usuario['id'] ?? null,
-                'nome_original' => $file->getClientName(),
+                'nome_original' => $nomeOriginal,
                 'caminho_arquivo' => $caminhoArquivo,
-                'mime' => $file->getMimeType(),
-                'tamanho' => $file->getSize(),
+                'mime' => $mime,
+                'tamanho' => $tamanho,
                 'hash' => $hash,
                 'criado_em' => date('Y-m-d H:i:s'),
             ]);
@@ -1383,14 +1583,17 @@ class ManifestacoesController extends BaseController
                     continue;
                 }
                 $size = (int) ($sizes[$i] ?? 0);
-                $mime = (string) ($types[$i] ?? '');
-                if ($size > $config->anexoMaxSize || !in_array($mime, $config->anexoMimesPermitidos)) {
+                $mime = (string) ($types[$i] ?? 'application/octet-stream');
+                if (!in_array($mime, $config->anexoMimesPermitidos)) {
+                    $mime = $this->mimePorExtensao($nome);
+                }
+                if ($size > $config->anexoMaxSize) {
                     continue;
                 }
                 if (!is_dir($uploadDir)) {
                     mkdir($uploadDir, 0755, true);
                 }
-                $nomeRandom = bin2hex(random_bytes(16)) . '_' . $nome;
+                $nomeRandom = $prefixoNome . bin2hex(random_bytes(16)) . '_' . $nome;
                 $destino = $uploadDir . $nomeRandom;
                 if (!move_uploaded_file($tmp, $destino)) {
                     continue;
@@ -1410,6 +1613,63 @@ class ManifestacoesController extends BaseController
                 ]);
             }
         }
+    }
+
+    /**
+     * Obtém mime type sem usar finfo_file no temp (evita erro em PROD quando /tmp não existe).
+     */
+    private function obterMimeTypeSeguro($file, string $nomeFallback = ''): string
+    {
+        try {
+            if (method_exists($file, 'getMimeType')) {
+                $mime = $file->getMimeType();
+                if ($mime !== null && $mime !== '') {
+                    return $mime;
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('debug', 'obterMimeTypeSeguro: ' . $e->getMessage());
+        }
+        $nome = $nomeFallback;
+        if (empty($nome) && method_exists($file, 'getClientName')) {
+            $nome = $file->getClientName();
+        }
+        return $this->mimePorExtensao($nome);
+    }
+
+    /**
+     * Obtém tamanho do arquivo sem depender do temp após move.
+     */
+    private function obterTamanhoArquivoSeguro($file): int
+    {
+        try {
+            if (method_exists($file, 'getSize')) {
+                $size = $file->getSize();
+                return is_numeric($size) ? (int) $size : 0;
+            }
+        } catch (\Throwable $e) {
+            log_message('debug', 'obterTamanhoArquivoSeguro: ' . $e->getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * Mime type por extensão (fallback quando finfo falha).
+     */
+    private function mimePorExtensao(string $nomeArquivo): string
+    {
+        $ext = strtolower(pathinfo($nomeArquivo, PATHINFO_EXTENSION));
+        $map = [
+            'pdf' => 'application/pdf',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'txt' => 'text/plain',
+        ];
+        return $map[$ext] ?? 'application/octet-stream';
     }
 
     /**
@@ -1450,8 +1710,17 @@ class ManifestacoesController extends BaseController
                 $nomeOriginal = $m[1];
             }
             $mime = 'application/octet-stream';
-            if (function_exists('mime_content_type')) {
-                $mime = (string) @mime_content_type($pathCompleto) ?: $mime;
+            if (function_exists('mime_content_type') && is_file($pathCompleto)) {
+                try {
+                    $detected = @mime_content_type($pathCompleto);
+                    if ($detected) {
+                        $mime = (string) $detected;
+                    }
+                } catch (\Throwable $e) {
+                    $mime = $this->mimePorExtensao($nomeArquivo);
+                }
+            } else {
+                $mime = $this->mimePorExtensao($nomeArquivo);
             }
             $conteudo = @file_get_contents($pathCompleto);
             $hash = $conteudo ? hash('sha256', $conteudo) : null;
@@ -1508,13 +1777,15 @@ class ManifestacoesController extends BaseController
             if (!method_exists($file, 'isValid') || !$file->isValid() || $file->getError() !== UPLOAD_ERR_OK) {
                 continue;
             }
-            if ($file->getSize() > $config->anexoMaxSize) {
+            $tamanho = $this->obterTamanhoArquivoSeguro($file);
+            $mime = $this->obterMimeTypeSeguro($file);
+            if ($tamanho > $config->anexoMaxSize) {
                 continue;
             }
-            if (!in_array($file->getMimeType(), $config->anexoMimesPermitidos)) {
+            if (!in_array($mime, $config->anexoMimesPermitidos)) {
                 continue;
             }
-            $this->salvarUmAnexo($file, $manifestacaoId, $uploadDir, $config, $anexoModel, $historicoModel, $usuario);
+            $this->salvarUmAnexo($file, $manifestacaoId, $uploadDir, $config, $anexoModel, $historicoModel, $usuario, $mime, $tamanho);
         }
 
         // 2) Fallback: ler diretamente de $_FILES (ex.: anexos[] no form)
@@ -1579,6 +1850,7 @@ class ManifestacoesController extends BaseController
 
     /**
      * Salva um arquivo recebido via UploadedFile do CI.
+     * Mime e tamanho devem ser obtidos antes do move (evita finfo_file no temp em PROD).
      */
     private function salvarUmAnexo(
         $file,
@@ -1587,30 +1859,42 @@ class ManifestacoesController extends BaseController
         $config,
         $anexoModel,
         $historicoModel,
-        array $usuario
+        array $usuario,
+        ?string $mime = null,
+        ?int $tamanho = null
     ): void {
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
-        $nomeRandom = bin2hex(random_bytes(16)) . '_' . $file->getClientName();
+        $nomeOriginal = $file->getClientName();
+        $nomeRandom = bin2hex(random_bytes(16)) . '_' . $nomeOriginal;
         $caminho = $config->uploadsDir . '/' . $manifestacaoId . '/' . $nomeRandom;
         if (!$file->move($uploadDir, $nomeRandom)) {
             return;
         }
-        $conteudo = file_get_contents($uploadDir . $nomeRandom);
+        $conteudo = @file_get_contents($uploadDir . $nomeRandom);
         $hash = $conteudo ? hash('sha256', $conteudo) : null;
+        if ($mime === null) {
+            $mime = $this->obterMimeTypeSeguro($file, $nomeOriginal);
+        }
+        if ($tamanho === null) {
+            $tamanho = $this->obterTamanhoArquivoSeguro($file);
+        }
+        if ($tamanho === 0 && $conteudo !== false) {
+            $tamanho = strlen($conteudo);
+        }
         $anexoModel->insert([
             'manifestacao_id' => $manifestacaoId,
             'enviado_por_usuario_id' => $usuario['id'] ?? null,
-            'nome_original' => $file->getClientName(),
+            'nome_original' => $nomeOriginal,
             'caminho_arquivo' => $caminho,
-            'mime' => $file->getMimeType(),
-            'tamanho' => $file->getSize(),
+            'mime' => $mime,
+            'tamanho' => $tamanho,
             'hash' => $hash,
             'criado_em' => date('Y-m-d H:i:s'),
         ]);
         $historicoModel->registrar($manifestacaoId, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_ANEXO_ADICIONADO, [
-            'nome_arquivo' => $file->getClientName(),
+            'nome_arquivo' => $nomeOriginal,
         ]);
     }
 }

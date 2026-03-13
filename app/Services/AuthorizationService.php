@@ -223,6 +223,20 @@ class AuthorizationService
     }
 
     /**
+     * Verifica se usuário pode editar ou excluir uma resposta ao ouvidor.
+     * Quem respondeu (respondido_por_usuario_id) ou administrador.
+     */
+    public function podeEditarExcluirRespostaOuvidor(array $usuario, array $manifestacao, array $resposta): bool
+    {
+        if (($usuario['role'] ?? '') === 'administrador') {
+            return true;
+        }
+        $usuarioId = (int) ($usuario['id'] ?? 0);
+        $autorId = (int) ($resposta['respondido_por_usuario_id'] ?? 0);
+        return $usuarioId > 0 && $usuarioId === $autorId;
+    }
+
+    /**
      * Verifica se usuário pode devolver manifestação ao quem lhe encaminhou.
      * Somente perfil 'usuario' pode devolver. Retorna a atribuição ativa onde o usuário é o destinatário.
      */

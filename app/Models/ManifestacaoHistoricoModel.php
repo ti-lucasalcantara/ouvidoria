@@ -58,6 +58,8 @@ class ManifestacaoHistoricoModel extends Model
     public const TIPO_ATRIBUICAO_EDITADA = 'ATRIBUICAO_EDITADA';
     public const TIPO_ATRIBUICAO_EXCLUIDA = 'ATRIBUICAO_EXCLUIDA';
     public const TIPO_RESPOSTA_OUVIDOR = 'RESPOSTA_OUVIDOR';
+    public const TIPO_RESPOSTA_OUVIDOR_EDITADA = 'RESPOSTA_OUVIDOR_EDITADA';
+    public const TIPO_RESPOSTA_OUVIDOR_EXCLUIDA = 'RESPOSTA_OUVIDOR_EXCLUIDA';
 
     /**
      * Registra evento no histórico.

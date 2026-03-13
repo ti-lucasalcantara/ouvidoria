@@ -145,6 +145,33 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 </div>
 <?php endif; ?>
 
+<!-- Modal: Editar resposta ao ouvidor -->
+<div class="modal fade" id="modalEditarRespostaOuvidor" tabindex="-1" aria-labelledby="modalEditarRespostaOuvidorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEditarRespostaOuvidorLabel"><i class="fas fa-edit me-2"></i>Editar resposta ao ouvidor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <?= form_open(url_to('ouvidoria.manifestacoes.editarRespostaOuvidor', $manifestacao['id']), ['id' => 'formEditarRespostaOuvidor']) ?>
+            <?= csrf_field() ?>
+            <input type="hidden" name="resposta_id" id="editarRespostaId" value="">
+            <div class="modal-body">
+                <div class="mb-0">
+                    <label class="form-label">Conteúdo da resposta <span class="text-danger">*</span></label>
+                    <div id="editor-editar-resposta-ouvidor" style="min-height: 180px;"></div>
+                    <input type="hidden" name="conteudo" id="editarRespostaConteudo" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btnSalvarEditarResposta"><i class="fas fa-save me-1"></i>Salvar</button>
+            </div>
+            <?= form_close() ?>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-lg-8">
         <!-- Conteúdo (descriptografado se autorizado) -->
@@ -185,12 +212,22 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
             <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-reply me-2"></i>Respostas ao ouvidor</h5></div>
             <div class="card-body">
                 <?php foreach ($respostasOuvidor as $resp): ?>
-                <div class="border rounded p-3 mb-3 bg-light">
+                <div class="border rounded p-3 mb-3 bg-light resposta-ouvidor-item" data-resposta-id="<?= (int) ($resp['id'] ?? 0) ?>">
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <strong><?= esc($resp['respondente_nome'] ?? 'Sistema') ?></strong>
-                        <small class="text-muted"><?= date('d/m/Y H:i', strtotime($resp['criado_em'] ?? 'now')) ?></small>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted"><?= date('d/m/Y H:i', strtotime($resp['criado_em'] ?? 'now')) ?></small>
+                            <?php if (!empty($resp['pode_editar_excluir'])): ?>
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-editar-resposta-ouvidor" title="Editar resposta"><i class="fas fa-edit"></i></button>
+                            <?= form_open(url_to('ouvidoria.manifestacoes.excluirRespostaOuvidor', $manifestacao['id']), ['class' => 'd-inline form-excluir-resposta-ouvidor']) ?>
+                            <input type="hidden" name="resposta_id" value="<?= (int) ($resp['id'] ?? 0) ?>">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir resposta"><i class="fas fa-trash"></i></button>
+                            <?= form_close() ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                    <div class="mb-2"><?= !empty($podeVerConteudoResposta) ? ($resp['conteudo'] ?? '') : '<em>Conteúdo protegido</em>' ?></div>
+                    <div class="mb-2 resposta-conteudo"><?= !empty($podeVerConteudoResposta) ? ($resp['conteudo'] ?? '') : '<em>Conteúdo protegido</em>' ?></div>
                     <?php $anexosResp = $resp['anexos'] ?? []; if (!empty($anexosResp)): ?>
                     <div class="mt-2">
                         <?php foreach ($anexosResp as $ar): ?>
@@ -226,6 +263,8 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 'REABERTURA' => 'Reabertura',
                 'ANEXO_ADICIONADO' => 'Anexo adicionado',
                 'RESPOSTA_OUVIDOR' => 'Resposta ao ouvidor',
+                'RESPOSTA_OUVIDOR_EDITADA' => 'Resposta ao ouvidor (editada)',
+                'RESPOSTA_OUVIDOR_EXCLUIDA' => 'Resposta ao ouvidor (excluída)',
                 default => $tipo,
             };
         };
@@ -247,8 +286,22 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                         'COMENTARIO', 'COMENTARIO_EDITADO', 'COMENTARIO_EXCLUIDO' => 'comment',
                         'ATRIBUICAO_EDITADA', 'ATRIBUICAO_EXCLUIDA' => 'share',
                         'RESPOSTA_OUVIDOR' => 'reply',
+                        'RESPOSTA_OUVIDOR_EDITADA' => 'edit',
+                        'RESPOSTA_OUVIDOR_EXCLUIDA' => 'trash-alt',
                         default => 'circle',
                     };
+                    $txtRespostaOuvidor = '';
+                    if ($tipo === 'RESPOSTA_OUVIDOR' && !empty($detalhes['conteudo'])) {
+                        $txtRespostaOuvidor = $detalhes['conteudo'];
+                    }
+                    $txtRespostaEditada = '';
+                    if ($tipo === 'RESPOSTA_OUVIDOR_EDITADA') {
+                        $txtRespostaEditada = ($detalhes['conteudo_novo'] ?? '') ?: '(conteúdo atualizado)';
+                    }
+                    $txtRespostaExcluida = '';
+                    if ($tipo === 'RESPOSTA_OUVIDOR_EXCLUIDA' && !empty($detalhes['conteudo'])) {
+                        $txtRespostaExcluida = $detalhes['conteudo'];
+                    }
                     $txtComentario = '';
                     if ($tipo === 'COMENTARIO') {
                         $txtComentario = $detalhes['comentario'] ?? '';
@@ -307,6 +360,12 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                             <div class="mt-1 p-2 bg-light rounded small"><?= esc($txtDevolucao) ?></div>
                             <?php elseif ($txtVolta !== ''): ?>
                             <div class="mt-1 p-2 bg-light rounded small"><?= esc($txtVolta) ?></div>
+                            <?php elseif ($txtRespostaOuvidor !== ''): ?>
+                            <div class="mt-1 p-2 bg-light rounded small"><?= $txtRespostaOuvidor ?></div>
+                            <?php elseif ($txtRespostaEditada !== ''): ?>
+                            <div class="mt-1 p-2 bg-light rounded small"><?= $txtRespostaEditada ?></div>
+                            <?php elseif ($txtRespostaExcluida !== ''): ?>
+                            <div class="mt-1 p-2 bg-light rounded small text-muted"><?= $txtRespostaExcluida ?></div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -915,6 +974,109 @@ $(function() {
         Swal.fire({
             title: "Excluir atribuição?",
             text: "Esta operação não poderá ser desfeita.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            confirmButtonText: "Excluir",
+            cancelButtonText: "Cancelar"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $(form).data('confirmed', true);
+                form.submit();
+            }
+        });
+    });
+
+    var quillEditarRespostaOuvidor = $('#editor-editar-resposta-ouvidor').length ? new Quill('#editor-editar-resposta-ouvidor', {
+        theme: 'snow',
+        modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
+    }) : null;
+    if (quillEditarRespostaOuvidor) {
+        quillEditarRespostaOuvidor.on('text-change', function() {
+            $('#editarRespostaConteudo').val(quillEditarRespostaOuvidor.root.innerHTML);
+        });
+    }
+    $(document).on('click', '.btn-editar-resposta-ouvidor', function() {
+        var $item = $(this).closest('.resposta-ouvidor-item');
+        var respostaId = $item.data('resposta-id');
+        var conteudo = $item.find('.resposta-conteudo').html() || '';
+        $('#editarRespostaId').val(respostaId);
+        if (quillEditarRespostaOuvidor) {
+            quillEditarRespostaOuvidor.root.innerHTML = conteudo;
+            $('#editarRespostaConteudo').val(conteudo);
+        }
+        new bootstrap.Modal(document.getElementById('modalEditarRespostaOuvidor')).show();
+    });
+    $('#formEditarRespostaOuvidor').on('submit', function(e) {
+        e.preventDefault();
+        if (quillEditarRespostaOuvidor) {
+            $('#editarRespostaConteudo').val(quillEditarRespostaOuvidor.root.innerHTML);
+        }
+        var html = $('#editarRespostaConteudo').val() || '';
+        if (!html || html.replace(/<[^>]*>/g, '').trim() === '') {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Atenção', text: 'Informe o conteúdo da resposta.' });
+            } else {
+                alert('Informe o conteúdo da resposta.');
+            }
+            return;
+        }
+        var form = this;
+        var formData = new FormData(form);
+        var btn = document.getElementById('btnSalvarEditarResposta');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+        }
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+        .then(function(result) {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar';
+            }
+            if (result.ok && result.data && result.data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalEditarRespostaOuvidor')).hide();
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'success', title: 'Sucesso', text: 'Resposta atualizada.' }).then(function() {
+                        window.location.reload();
+                    });
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: (result.data && result.data.message) || 'Erro ao atualizar.' });
+                } else {
+                    alert((result.data && result.data.message) || 'Erro ao atualizar.');
+                }
+            }
+        }).catch(function() {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save me-1"></i>Salvar';
+            }
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'error', title: 'Erro', text: 'Erro ao enviar. Tente novamente.' });
+            } else {
+                alert('Erro ao enviar. Tente novamente.');
+            }
+        });
+    });
+
+    $(document).on('submit', '.form-excluir-resposta-ouvidor', function(e) {
+        if ($(this).data('confirmed')) {
+            $(this).data('confirmed', false);
+            return;
+        }
+        e.preventDefault();
+        var form = this;
+        Swal.fire({
+            title: "Excluir resposta?",
+            text: "A resposta será removida. Esta ação não poderá ser desfeita.",
             icon: "warning",
             showCancelButton: true,
             confirmButtonColor: "#d33",
