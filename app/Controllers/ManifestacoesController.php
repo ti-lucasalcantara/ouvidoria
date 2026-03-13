@@ -182,9 +182,12 @@ class ManifestacoesController extends BaseController
 
         $setorModel = model(\App\Models\SetorModel::class);
         $setores = $setorModel->ativos()->findAll();
+        $categoriaModel = model(\App\Models\CategoriaManifestacaoModel::class);
+        $categorias = $categoriaModel->listarAtivas();
 
         return view('ouvidoria/manifestacoes/create', [
             'setores' => $setores,
+            'categorias' => $categorias,
         ]);
     }
 
@@ -278,6 +281,13 @@ class ManifestacoesController extends BaseController
             }
             session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao salvar manifestação.']));
             return redirect()->back()->withInput();
+        }
+
+        // Categorias (1 ou N)
+        $categoriasIds = $this->request->getPost('categorias_ids');
+        if (is_array($categoriasIds)) {
+            $manifestacaoCategoriaModel = model(\App\Models\ManifestacaoCategoriaModel::class);
+            $manifestacaoCategoriaModel->salvarParaManifestacao($manifestacaoId, $categoriasIds);
         }
 
         // Anexos fora da transação principal: falha em anexo não invalida o cadastro
@@ -415,6 +425,40 @@ class ManifestacoesController extends BaseController
         }
 
         $podeEditarManifestacao = $authService->podeEditarManifestacao($usuario ?? [], $manifestacao);
+        $podeResponderOuvidor = $authService->podeResponderOuvidor($usuario ?? [], $manifestacao);
+
+        $manifestacaoCategoriaModel = model(\App\Models\ManifestacaoCategoriaModel::class);
+        $respostaOuvidorModel = model(\App\Models\RespostaOuvidorModel::class);
+        $respostaAnexoModel = model(\App\Models\RespostaOuvidorAnexoModel::class);
+        $respostasOuvidor = $respostaOuvidorModel->porManifestacao($id);
+        $podeVerConteudo = $authService->podeVisualizarManifestacao($usuario ?? [], $manifestacao);
+        foreach ($respostasOuvidor as &$r) {
+            $r['anexos'] = $respostaAnexoModel->porResposta((int) $r['id']);
+            $r['respondente_nome'] = $r['respondido_por_usuario_id'] ? ($usuarioModel->find($r['respondido_por_usuario_id'])['nome'] ?? '') : 'Sistema';
+        }
+        unset($r);
+        if ($podeVerConteudo && !empty($respostasOuvidor)) {
+            try {
+                $encryptionService = service('encryption');
+                $dek = $encryptionService->obterDEK($id);
+                if ($dek) {
+                    foreach ($respostasOuvidor as &$r) {
+                        $r['conteudo'] = $encryptionService->descriptografarCampo($r['conteudo'] ?? '', $dek);
+                    }
+                    unset($r);
+                } else {
+                    foreach ($respostasOuvidor as &$r) {
+                        $r['conteudo'] = '';
+                    }
+                    unset($r);
+                }
+            } catch (\Throwable $e) {
+                foreach ($respostasOuvidor as &$r) {
+                    $r['conteudo'] = '';
+                }
+                unset($r);
+            }
+        }
 
         return view('ouvidoria/manifestacoes/show', [
             'manifestacao' => $manifestacao,
@@ -432,6 +476,10 @@ class ManifestacoesController extends BaseController
             'atribuicaoDevolucaoUsuario' => $atribuicaoDevolucaoUsuario,
             'podeEditarManifestacao' => $podeEditarManifestacao,
             'usuario' => $usuario,
+            'categoriasManifestacao' => $manifestacaoCategoriaModel->porManifestacao($id),
+            'podeResponderOuvidor' => $podeResponderOuvidor,
+            'respostasOuvidor' => $respostasOuvidor,
+            'podeVerConteudoResposta' => $podeVerConteudo,
         ]);
     }
 
@@ -462,9 +510,16 @@ class ManifestacoesController extends BaseController
         $this->sincronizarAnexosDoDisco($id);
         $anexos = $anexoModel->porManifestacao($id);
 
+        $categoriaModel = model(\App\Models\CategoriaManifestacaoModel::class);
+        $categorias = $categoriaModel->listarAtivas();
+        $manifestacaoCategoriaModel = model(\App\Models\ManifestacaoCategoriaModel::class);
+        $categoriasIds = $manifestacaoCategoriaModel->idsPorManifestacao($id);
+
         return view('ouvidoria/manifestacoes/edit', [
             'manifestacao' => $manifestacao,
             'anexos' => is_array($anexos) ? $anexos : [],
+            'categorias' => $categorias,
+            'categoriasIds' => $categoriasIds,
         ]);
     }
 
@@ -548,6 +603,12 @@ class ManifestacoesController extends BaseController
             log_message('error', 'Erro ao atualizar manifestação ' . $id . ': ' . $e->getMessage());
             session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao atualizar manifestação.']));
             return redirect()->to(url_to('ouvidoria.manifestacoes.edit', $id))->withInput();
+        }
+
+        $categoriasIds = $this->request->getPost('categorias_ids');
+        if (is_array($categoriasIds)) {
+            $manifestacaoCategoriaModel = model(\App\Models\ManifestacaoCategoriaModel::class);
+            $manifestacaoCategoriaModel->salvarParaManifestacao($id, $categoriasIds);
         }
 
         session()->setFlashdata(getMessageSucess('toast', ['text' => 'Manifestação atualizada com sucesso.']));
@@ -1146,6 +1207,209 @@ class ManifestacoesController extends BaseController
 
         session()->setFlashdata(getMessageSucess('toast', ['text' => 'Anexo excluído.']));
         return redirect()->to(url_to('ouvidoria.manifestacoes.edit', $manifestacaoId));
+    }
+
+    /**
+     * Registra resposta para o ouvidor (conteúdo criptografado, anexos, status -> respondida).
+     */
+    public function responderOuvidor(int $id)
+    {
+        $usuario = obterUsuarioLogado();
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($id);
+
+        if (!$manifestacao || !service('authorization')->podeAcessarPaginaManifestacao($usuario ?? [], $manifestacao)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Acesso negado ou manifestação não encontrada.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado ou manifestação não encontrada.']));
+            return redirect()->back();
+        }
+
+        if (!service('authorization')->podeResponderOuvidor($usuario ?? [], $manifestacao)) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Você não pode registrar resposta para o ouvidor.'])->setStatusCode(403);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Você não pode registrar resposta para o ouvidor.']));
+            return redirect()->back();
+        }
+
+        $conteudo = $this->request->getPost('conteudo');
+        if ($conteudo === null || trim((string) $conteudo) === '') {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Informe o conteúdo da resposta.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Informe o conteúdo da resposta.']));
+            return redirect()->back();
+        }
+
+        try {
+            $encryptionService = service('encryption');
+        } catch (\InvalidArgumentException $e) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Configuração de criptografia indisponível.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Configuração de criptografia indisponível.']));
+            return redirect()->back();
+        }
+
+        $dek = $encryptionService->obterDEK($id);
+        if (!$dek) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Não foi possível criptografar a resposta.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Não foi possível criptografar a resposta.']));
+            return redirect()->back();
+        }
+
+        $conteudoCripto = $encryptionService->criptografarCampo(trim((string) $conteudo), $dek);
+
+        $respostaModel = model(\App\Models\RespostaOuvidorModel::class);
+        $historicoModel = model(ManifestacaoHistoricoModel::class);
+        $db = \Config\Database::connect();
+
+        $db->transStart();
+        try {
+            $respostaId = $respostaModel->insert([
+                'manifestacao_id' => $id,
+                'respondido_por_usuario_id' => $usuario['id'] ?? null,
+                'conteudo' => $conteudoCripto,
+                'criado_em' => date('Y-m-d H:i:s'),
+            ], true);
+
+            if (!$respostaId) {
+                throw new \RuntimeException('Falha ao inserir resposta.');
+            }
+
+            $this->processarAnexosResposta($respostaId);
+
+            $manifestacaoModel->update($id, ['status' => 'respondida']);
+
+            $historicoModel->registrar($id, $usuario['id'] ?? null, ManifestacaoHistoricoModel::TIPO_RESPOSTA_OUVIDOR, [
+                'resposta_id' => $respostaId,
+            ]);
+
+            $db->transComplete();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'responderOuvidor: ' . $e->getMessage());
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['success' => false, 'message' => 'Erro ao registrar resposta.']);
+            }
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Erro ao registrar resposta.']));
+            return redirect()->back();
+        }
+
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => 'Resposta registrada com sucesso.']);
+        }
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Resposta registrada com sucesso.']));
+        return redirect()->to(url_to('ouvidoria.manifestacoes.show', $id));
+    }
+
+    /**
+     * Processa upload de anexos da resposta ao ouvidor.
+     */
+    private function processarAnexosResposta(int $respostaOuvidorId): void
+    {
+        $config = config('Ouvidoria');
+        $uploadDir = WRITEPATH . $config->uploadsDir . '/respostas/' . $respostaOuvidorId . '/';
+        $anexoModel = model(\App\Models\RespostaOuvidorAnexoModel::class);
+        $usuario = obterUsuarioLogado();
+        $prefixoCaminho = $config->uploadsDir . '/respostas/' . $respostaOuvidorId . '/';
+
+        $arquivos = $this->request->getFileMultiple('anexos_resposta');
+        if (empty($arquivos)) {
+            $files = $this->request->getFiles();
+            $arquivos = isset($files['anexos_resposta']) ? (is_array($files['anexos_resposta']) ? $files['anexos_resposta'] : [$files['anexos_resposta']]) : [];
+        }
+        $arquivos = array_values(is_array($arquivos) ? $arquivos : []);
+
+        foreach ($arquivos as $file) {
+            if (is_array($file)) {
+                continue;
+            }
+            if (!method_exists($file, 'isValid') || !$file->isValid() || $file->getError() !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            if ($file->getSize() > $config->anexoMaxSize) {
+                continue;
+            }
+            if (!in_array($file->getMimeType(), $config->anexoMimesPermitidos)) {
+                continue;
+            }
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            $nomeRandom = bin2hex(random_bytes(16)) . '_' . $file->getClientName();
+            if (!$file->move($uploadDir, $nomeRandom)) {
+                continue;
+            }
+            $caminhoArquivo = $prefixoCaminho . $nomeRandom;
+            $conteudo = @file_get_contents($uploadDir . $nomeRandom);
+            $hash = $conteudo ? hash('sha256', $conteudo) : null;
+            $anexoModel->insert([
+                'resposta_ouvidor_id' => $respostaOuvidorId,
+                'enviado_por_usuario_id' => $usuario['id'] ?? null,
+                'nome_original' => $file->getClientName(),
+                'caminho_arquivo' => $caminhoArquivo,
+                'mime' => $file->getMimeType(),
+                'tamanho' => $file->getSize(),
+                'hash' => $hash,
+                'criado_em' => date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        if (empty($arquivos) && !empty($_FILES['anexos_resposta'])) {
+            $f = $_FILES['anexos_resposta'];
+            $nomes = isset($f['name']) ? $f['name'] : [];
+            $tmpNames = isset($f['tmp_name']) ? $f['tmp_name'] : [];
+            $errors = isset($f['error']) ? $f['error'] : [];
+            $sizes = isset($f['size']) ? $f['size'] : [];
+            $types = isset($f['type']) ? $f['type'] : [];
+            if (!is_array($nomes)) {
+                $nomes = $nomes ? [$nomes] : [];
+                $tmpNames = $tmpNames ? [$tmpNames] : [];
+                $errors = $errors !== null ? [$errors] : [];
+                $sizes = $sizes !== null ? [$sizes] : [];
+                $types = $types !== null ? [$types] : [];
+            }
+            foreach ($nomes as $i => $nome) {
+                if (empty($nome) || ($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    continue;
+                }
+                $tmp = $tmpNames[$i] ?? '';
+                if (!is_uploaded_file($tmp)) {
+                    continue;
+                }
+                $size = (int) ($sizes[$i] ?? 0);
+                $mime = (string) ($types[$i] ?? '');
+                if ($size > $config->anexoMaxSize || !in_array($mime, $config->anexoMimesPermitidos)) {
+                    continue;
+                }
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                $nomeRandom = bin2hex(random_bytes(16)) . '_' . $nome;
+                $destino = $uploadDir . $nomeRandom;
+                if (!move_uploaded_file($tmp, $destino)) {
+                    continue;
+                }
+                $caminhoArquivo = $prefixoCaminho . $nomeRandom;
+                $conteudo = @file_get_contents($destino);
+                $hash = $conteudo ? hash('sha256', $conteudo) : null;
+                $anexoModel->insert([
+                    'resposta_ouvidor_id' => $respostaOuvidorId,
+                    'enviado_por_usuario_id' => $usuario['id'] ?? null,
+                    'nome_original' => $nome,
+                    'caminho_arquivo' => $caminhoArquivo,
+                    'mime' => $mime,
+                    'tamanho' => $size,
+                    'hash' => $hash,
+                    'criado_em' => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
     }
 
     /**

@@ -205,6 +205,24 @@ class AuthorizationService
     }
 
     /**
+     * Verifica se usuário pode gerenciar categorias da manifestação (CRUD).
+     * Somente ouvidor e administrador.
+     */
+    public function podeGerenciarCategoriasManifestacao(array $usuario): bool
+    {
+        return in_array($usuario['role'] ?? '', ['administrador', 'ouvidor']);
+    }
+
+    /**
+     * Verifica se usuário pode registrar resposta para o ouvidor.
+     * Somente ouvidor e administrador.
+     */
+    public function podeResponderOuvidor(array $usuario, array $manifestacao): bool
+    {
+        return in_array($usuario['role'] ?? '', $this->rolesAcessoTotal());
+    }
+
+    /**
      * Verifica se usuário pode devolver manifestação ao quem lhe encaminhou.
      * Somente perfil 'usuario' pode devolver. Retorna a atribuição ativa onde o usuário é o destinatário.
      */

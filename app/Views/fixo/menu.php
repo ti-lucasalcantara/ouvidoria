@@ -35,6 +35,9 @@ $role = $usuario['role'] ?? 'usuario';
             <a class="nav-link <?= $menu_ativo == 'ouvidoria.setores.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.setores.index') ?>"><i class="fas fa-sitemap me-2"></i>Setores</a>
             <a class="nav-link <?= $menu_ativo == 'ouvidoria.usuarios.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.usuarios.index') ?>"><i class="fas fa-users me-2"></i>Usuários</a>
             <?php endif; ?>
+            <?php if (in_array($role, ['administrador', 'ouvidor'])): ?>
+            <a class="nav-link <?= $menu_ativo == 'ouvidoria.categoriasManifestacao.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.categoriasManifestacao.index') ?>"><i class="fas fa-tags me-2"></i>Categorias da Manifestação</a>
+            <?php endif; ?>
         </div>
     </li>
 </ul>

@@ -48,6 +48,15 @@ Nova Manifestação - Ouvidoria
                 <label class="form-label">Dados de identificação <small class="text-muted">(JSON ou texto livre)</small></label>
                 <textarea name="dados_identificacao" class="form-control" rows="2" placeholder='{"nome":"...","contato":"..."}'><?= esc(old('dados_identificacao')) ?></textarea>
             </div>
+            <div class="col-12 col-md-6">
+                <label class="form-label">Categorias</label>
+                <select name="categorias_ids[]" id="selectCategorias" class="form-select select2-multiple" multiple placeholder="Selecione uma ou mais categorias">
+                    <?php if (!empty($categorias)): foreach ($categorias as $cat): ?>
+                    <option value="<?= (int) $cat['id'] ?>"><?= esc($cat['nome']) ?></option>
+                    <?php endforeach; endif; ?>
+                </select>
+                <small class="text-muted">Opcional. Selecione uma ou mais categorias.</small>
+            </div>
             <div class="col-12 col-md-4">
                 <label class="form-label">Prioridade</label>
                 <select name="prioridade" class="form-select">
@@ -159,6 +168,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('descricao').value = quill.root.innerHTML;
         syncInputAnexos();
     });
+
+    if (typeof $ !== 'undefined' && $.fn.select2) {
+        $('#selectCategorias').select2({ width: '100%', placeholder: 'Selecione uma ou mais categorias' });
+    }
 });
 </script>
 <?= $this->endSection() ?>

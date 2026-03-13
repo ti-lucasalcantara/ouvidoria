@@ -35,10 +35,13 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->post('manifestacoes/editarAtribuicao/(:num)', 'ManifestacoesController::editarAtribuicao/$1', ['as' => 'ouvidoria.manifestacoes.editarAtribuicao']);
     $routes->post('manifestacoes/excluirAtribuicao/(:num)', 'ManifestacoesController::excluirAtribuicao/$1', ['as' => 'ouvidoria.manifestacoes.excluirAtribuicao']);
     $routes->post('manifestacoes/excluirAnexo/(:num)', 'ManifestacoesController::excluirAnexo/$1', ['as' => 'ouvidoria.manifestacoes.excluirAnexo']);
+    $routes->post('manifestacoes/responderOuvidor/(:num)', 'ManifestacoesController::responderOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.responderOuvidor']);
 
     // Anexos (download e abrir no navegador)
     $routes->get('anexos/download/(:num)', 'AnexosController::download/$1', ['as' => 'ouvidoria.anexos.download']);
     $routes->get('anexos/abrir/(:num)', 'AnexosController::abrir/$1', ['as' => 'ouvidoria.anexos.abrir']);
+    $routes->get('anexos/resposta/abrir/(:num)', 'AnexosController::respostaAbrir/$1', ['as' => 'ouvidoria.anexos.respostaAbrir']);
+    $routes->get('anexos/resposta/download/(:num)', 'AnexosController::respostaDownload/$1', ['as' => 'ouvidoria.anexos.respostaDownload']);
 
     // Setores (admin)
     $routes->get('setores', 'SetoresController::index', ['as' => 'ouvidoria.setores.index']);
@@ -47,6 +50,14 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->get('setores/edit/(:num)', 'SetoresController::edit/$1', ['as' => 'ouvidoria.setores.edit']);
     $routes->post('setores/update/(:num)', 'SetoresController::update/$1', ['as' => 'ouvidoria.setores.update']);
     $routes->get('setores/delete/(:num)', 'SetoresController::delete/$1', ['as' => 'ouvidoria.setores.delete']);
+
+    // Categorias da Manifestação (ouvidor + admin)
+    $routes->get('categorias-manifestacao', 'CategoriasManifestacaoController::index', ['as' => 'ouvidoria.categoriasManifestacao.index']);
+    $routes->get('categorias-manifestacao/create', 'CategoriasManifestacaoController::create', ['as' => 'ouvidoria.categoriasManifestacao.create']);
+    $routes->post('categorias-manifestacao/store', 'CategoriasManifestacaoController::store', ['as' => 'ouvidoria.categoriasManifestacao.store']);
+    $routes->get('categorias-manifestacao/edit/(:num)', 'CategoriasManifestacaoController::edit/$1', ['as' => 'ouvidoria.categoriasManifestacao.edit']);
+    $routes->post('categorias-manifestacao/update/(:num)', 'CategoriasManifestacaoController::update/$1', ['as' => 'ouvidoria.categoriasManifestacao.update']);
+    $routes->get('categorias-manifestacao/delete/(:num)', 'CategoriasManifestacaoController::delete/$1', ['as' => 'ouvidoria.categoriasManifestacao.delete']);
 
     // Usuários (admin)
     $routes->get('usuarios', 'UsuariosController::index', ['as' => 'ouvidoria.usuarios.index']);

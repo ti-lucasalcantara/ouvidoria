@@ -12,6 +12,9 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
     <h1 class="h3 mb-0 text-dark"><i class="fas fa-folder-open me-2"></i><?= esc($manifestacao['protocolo']) ?></h1>
     <div class="d-flex gap-2">
+        <?php if (!empty($podeResponderOuvidor)): ?>
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalResponderOuvidor"><i class="fas fa-reply me-1"></i>Responder para o ouvidor</button>
+        <?php endif; ?>
         <?php if (!empty($podeEditarManifestacao)): ?>
         <a href="<?= url_to('ouvidoria.manifestacoes.edit', $manifestacao['id']) ?>" class="btn btn-primary"><i class="fas fa-edit me-1"></i>Editar</a>
         <?php endif; ?>
@@ -48,6 +51,17 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 <small class="text-muted d-block">Origem</small>
                 <?= esc($manifestacao['origem'] ?? 'Fala.BR') ?>
             </div>
+            <?php
+            $categoriasManifestacao = isset($categoriasManifestacao) && is_array($categoriasManifestacao) ? $categoriasManifestacao : [];
+            if (!empty($categoriasManifestacao)):
+            ?>
+            <div class="col-12">
+                <small class="text-muted d-block">Categorias</small>
+                <?php foreach ($categoriasManifestacao as $cat): ?>
+                <span class="badge bg-secondary me-1"><?= esc($cat['categoria_nome'] ?? $cat['nome'] ?? '') ?></span>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
             <div class="col-12 col-md-4">
                 <small class="text-muted d-block">Registro do Estabelecimento</small>
                 <?php
@@ -99,6 +113,38 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 </div>
 <?php endif; ?>
 
+<?php if (!empty($podeResponderOuvidor)): ?>
+<!-- Modal: Responder para o ouvidor -->
+<div class="modal fade" id="modalResponderOuvidor" tabindex="-1" aria-labelledby="modalResponderOuvidorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalResponderOuvidorLabel"><i class="fas fa-reply me-2"></i>Responder para o ouvidor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <?= form_open_multipart(url_to('ouvidoria.manifestacoes.responderOuvidor', $manifestacao['id']), ['id' => 'formResponderOuvidor']) ?>
+            <?= csrf_field() ?>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Conteúdo da resposta <span class="text-danger">*</span></label>
+                    <div id="editor-resposta-ouvidor" style="min-height: 180px;"></div>
+                    <input type="hidden" name="conteudo" id="conteudoRespostaOuvidor" required>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">Anexos</label>
+                    <input type="file" name="anexos_resposta[]" id="anexosRespostaInput" class="form-control" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-success" id="btnEnviarRespostaOuvidor"><i class="fas fa-paper-plane me-1"></i>Responder</button>
+            </div>
+            <?= form_close() ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="row">
     <div class="col-lg-8">
         <!-- Conteúdo (descriptografado se autorizado) -->
@@ -130,6 +176,34 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
             </div>
         </div>
 
+        <!-- Respostas ao ouvidor -->
+        <?php
+        $respostasOuvidor = isset($respostasOuvidor) && is_array($respostasOuvidor) ? $respostasOuvidor : [];
+        if (!empty($respostasOuvidor)):
+        ?>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-reply me-2"></i>Respostas ao ouvidor</h5></div>
+            <div class="card-body">
+                <?php foreach ($respostasOuvidor as $resp): ?>
+                <div class="border rounded p-3 mb-3 bg-light">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <strong><?= esc($resp['respondente_nome'] ?? 'Sistema') ?></strong>
+                        <small class="text-muted"><?= date('d/m/Y H:i', strtotime($resp['criado_em'] ?? 'now')) ?></small>
+                    </div>
+                    <div class="mb-2"><?= !empty($podeVerConteudoResposta) ? ($resp['conteudo'] ?? '') : '<em>Conteúdo protegido</em>' ?></div>
+                    <?php $anexosResp = $resp['anexos'] ?? []; if (!empty($anexosResp)): ?>
+                    <div class="mt-2">
+                        <?php foreach ($anexosResp as $ar): ?>
+                        <a href="<?= url_to('ouvidoria.anexos.respostaAbrir', $ar['id']) ?>" class="btn btn-sm btn-outline-secondary me-1 mb-1" target="_blank" rel="noopener"><i class="fas fa-paperclip me-1"></i><?= esc($ar['nome_original'] ?? 'Anexo') ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Timeline Histórico -->
         <?php
         $detalhesHist = function ($h) {
@@ -151,6 +225,7 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 'ATRIBUICAO_EXCLUIDA' => 'Atribuição excluída',
                 'REABERTURA' => 'Reabertura',
                 'ANEXO_ADICIONADO' => 'Anexo adicionado',
+                'RESPOSTA_OUVIDOR' => 'Resposta ao ouvidor',
                 default => $tipo,
             };
         };
@@ -171,6 +246,7 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                         'ALTERACAO_STATUS' => 'exchange-alt',
                         'COMENTARIO', 'COMENTARIO_EDITADO', 'COMENTARIO_EXCLUIDO' => 'comment',
                         'ATRIBUICAO_EDITADA', 'ATRIBUICAO_EXCLUIDA' => 'share',
+                        'RESPOSTA_OUVIDOR' => 'reply',
                         default => 'circle',
                     };
                     $txtComentario = '';
@@ -759,6 +835,76 @@ $(function() {
         }
         new bootstrap.Modal(document.getElementById('modalEditarAtribuicao')).show();
     });
+
+    var quillRespostaOuvidor = $('#editor-resposta-ouvidor').length ? new Quill('#editor-resposta-ouvidor', {
+        theme: 'snow',
+        modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
+    }) : null;
+    if (quillRespostaOuvidor) {
+        quillRespostaOuvidor.on('text-change', function() {
+            $('#conteudoRespostaOuvidor').val(quillRespostaOuvidor.root.innerHTML);
+        });
+    }
+    $('#formResponderOuvidor').on('submit', function(e) {
+        e.preventDefault();
+        if (quillRespostaOuvidor) {
+            $('#conteudoRespostaOuvidor').val(quillRespostaOuvidor.root.innerHTML);
+        }
+        var html = $('#conteudoRespostaOuvidor').val() || '';
+        if (!html || html.replace(/<[^>]*>/g, '').trim() === '') {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Atenção', text: 'Informe o conteúdo da resposta.' });
+            } else {
+                alert('Informe o conteúdo da resposta.');
+            }
+            return;
+        }
+        var form = this;
+        var formData = new FormData(form);
+        var btn = document.getElementById('btnEnviarRespostaOuvidor');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando...';
+        }
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+        .then(function(result) {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Responder';
+            }
+            if (result.ok && result.data && result.data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('modalResponderOuvidor')).hide();
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'success', title: 'Sucesso', text: 'Resposta registrada com sucesso.' }).then(function() {
+                        window.location.reload();
+                    });
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: (result.data && result.data.message) || 'Erro ao registrar resposta.' });
+                } else {
+                    alert((result.data && result.data.message) || 'Erro ao registrar resposta.');
+                }
+            }
+        }).catch(function() {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Responder';
+            }
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'error', title: 'Erro', text: 'Erro ao enviar. Tente novamente.' });
+            } else {
+                alert('Erro ao enviar. Tente novamente.');
+            }
+        });
+    });
+
     $(document).on('submit', '.form-excluir-atribuicao', function(e) {
         if ($(this).data('confirmed')) {
             $(this).data('confirmed', false);

@@ -57,6 +57,7 @@ class ManifestacaoHistoricoModel extends Model
     public const TIPO_VOLTA = 'VOLTA';
     public const TIPO_ATRIBUICAO_EDITADA = 'ATRIBUICAO_EDITADA';
     public const TIPO_ATRIBUICAO_EXCLUIDA = 'ATRIBUICAO_EXCLUIDA';
+    public const TIPO_RESPOSTA_OUVIDOR = 'RESPOSTA_OUVIDOR';
 
     /**
      * Registra evento no histórico.
