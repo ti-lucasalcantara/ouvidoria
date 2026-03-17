@@ -219,7 +219,7 @@ class AuthorizationService
      */
     public function podeResponderOuvidor(array $usuario, array $manifestacao): bool
     {
-        return in_array($usuario['role'] ?? '', $this->rolesAcessoTotal());
+        return in_array($usuario['role'] ?? '', array_merge($this->rolesAcessoTotal(), ['gerente']) );
     }
 
     /**
