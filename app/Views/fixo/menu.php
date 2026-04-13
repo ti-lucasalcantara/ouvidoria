@@ -5,6 +5,17 @@ if (!isset($menu_ativo)) {
 helper('ouvidoria');
 $usuario = obterUsuarioLogado();
 $role = $usuario['role'] ?? 'usuario';
+$totalSolicitacoesProrrogacaoPendentes = 0;
+if (in_array($role, ['administrador', 'ouvidor'])) {
+    try {
+        $totalSolicitacoesProrrogacaoPendentes = (int) \Config\Database::connect()
+            ->table('manifestacao_solicitacoes_prazo')
+            ->where('status', 'pendente')
+            ->countAllResults();
+    } catch (\Throwable $e) {
+        $totalSolicitacoesProrrogacaoPendentes = 0;
+    }
+}
 ?>
 <style>
     .menu-titulo span {
@@ -18,6 +29,9 @@ $role = $usuario['role'] ?? 'usuario';
     <li class="nav-item mb-2">
         <a class="nav-link <?= $menu_ativo == 'ouvidoria.dashboard' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.dashboard') ?>">
             <i class="fas fa-chart-line me-2"></i>Dashboard Ouvidoria
+            <?php if ($totalSolicitacoesProrrogacaoPendentes > 0): ?>
+            <span class="badge bg-warning text-dark ms-2"><?= $totalSolicitacoesProrrogacaoPendentes ?></span>
+            <?php endif; ?>
         </a>
     </li>
 
@@ -30,6 +44,12 @@ $role = $usuario['role'] ?? 'usuario';
             <a class="nav-link <?= $menu_ativo == 'ouvidoria.manifestacoes.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.manifestacoes.index') ?>"><i class="fas fa-list me-2"></i>Manifestações</a>
             <?php if (in_array($role, ['administrador', 'ouvidor'])): ?>
             <a class="nav-link <?= $menu_ativo == 'ouvidoria.manifestacoes.create' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.manifestacoes.create') ?>"><i class="fas fa-plus me-2"></i>Nova Manifestação</a>
+            <a class="nav-link <?= $menu_ativo == 'ouvidoria.solicitacoesPrazo.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.solicitacoesPrazo.index') ?>">
+                <i class="fas fa-hourglass-half me-2"></i>Solicitações de Prazo
+                <?php if ($totalSolicitacoesProrrogacaoPendentes > 0): ?>
+                <span class="badge bg-warning text-dark ms-2"><?= $totalSolicitacoesProrrogacaoPendentes ?></span>
+                <?php endif; ?>
+            </a>
             <?php endif; ?>
             <?php if ($role === 'administrador'): ?>
             <a class="nav-link <?= $menu_ativo == 'ouvidoria.setores.index' ? 'active_menu' : '' ?>" href="<?= url_to('ouvidoria.setores.index') ?>"><i class="fas fa-sitemap me-2"></i>Setores</a>

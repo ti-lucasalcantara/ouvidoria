@@ -82,6 +82,16 @@ $cardClass = function ($key) use ($ativo) {
         </a>
     </div>
     <div class="col-6 col-md-4 col-lg-2">
+        <a href="<?= $link('prorrogacao_pendente') ?>" class="text-decoration-none">
+            <div class="<?= $cardClass('prorrogacao_pendente') ?>">
+                <div class="card-body">
+                    <p class="text-muted small mb-1">Prorrogações</p>
+                    <h4 class="mb-0 text-warning"><?= $totalSolicitacoesProrrogacaoPendentes ?? 0 ?></h4>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
         <a href="<?= $link('em_atraso') ?>" class="text-decoration-none">
             <div class="<?= $cardClass('em_atraso') ?>">
                 <div class="card-body">
@@ -150,6 +160,53 @@ $cardClass = function ($key) use ($ativo) {
 .card.active.bg-primary .card-body h4 { color: white !important; }
 </style>
 
+<?php if (!empty($solicitacoesProrrogacaoPendentes)): ?>
+<div class="alert alert-warning border-0 shadow-sm d-flex justify-content-between align-items-center mb-4" role="alert">
+    <div>
+        <strong><?= count($solicitacoesProrrogacaoPendentes) ?> solicitação(ões) de prorrogação pendente(s)</strong>
+        aguardando visualização do ouvidor.
+    </div>
+    <a href="<?= $link('prorrogacao_pendente') ?>" class="btn btn-sm btn-outline-warning">Ver pendências</a>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-hourglass-half me-2"></i>Solicitações de prorrogação pendentes</h5>
+        <a href="<?= url_to('ouvidoria.solicitacoesPrazo.index') ?>" class="btn btn-sm btn-outline-warning">Abrir tela de análise</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 table-datatable">
+                <thead class="table-light">
+                    <tr>
+                        <th>Solicitada em</th>
+                        <th>Protocolo</th>
+                        <th>Solicitante</th>
+                        <th>Dias</th>
+                        <th>Assunto</th>
+                        <th>Motivo</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($solicitacoesProrrogacaoPendentes as $s): ?>
+                    <tr>
+                        <td><small><?= !empty($s['created_at']) ? date('d/m/Y H:i', strtotime($s['created_at'])) : '-' ?></small></td>
+                        <td><strong><?= esc($s['protocolo']) ?></strong></td>
+                        <td><?= esc($s['solicitante_nome'] ?? '-') ?></td>
+                        <td><span class="badge bg-warning text-dark"><?= (int) ($s['dias_solicitados'] ?? 0) ?> dia(s)</span></td>
+                        <td><?= esc(obterAssuntoExibicao($s['assunto'] ?? '')) ?></td>
+                        <td class="text-break"><?= esc(mb_strimwidth(strip_tags((string) ($s['motivo'] ?? '')), 0, 90, '...')) ?></td>
+                        <td><a href="<?= url_to('ouvidoria.manifestacoes.show', $s['manifestacao_id']) ?>" class="btn btn-sm btn-outline-primary">Ver</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Últimas manifestações -->
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -181,7 +238,12 @@ $cardClass = function ($key) use ($ativo) {
                         <td><strong><?= esc($m['protocolo_falabr']) ?></strong></td>
                         <td><?= usuarioPodeVisualizar($m) ? esc(obterAssuntoExibicao($m['assunto'] ?? '')) : '<em>Conteúdo protegido</em>' ?></td>
                         <td><span class="badge bg-<?= ($m['prioridade'] ?? '') === 'alta' ? 'danger' : (($m['prioridade'] ?? '') === 'media' ? 'warning' : 'info') ?>"><?= esc($m['prioridade'] ?? 'media') ?></span></td>
-                        <td><span class="badge bg-<?= (in_array($m['id'], $idsDevolvidoOuvidor ?? []) ? 'info' : 'secondary') ?>"><?= esc(in_array($m['id'], $idsDevolvidoOuvidor ?? []) ? 'Devolvido' : statusLabelGerente($m, false)) ?></span></td>
+                        <td>
+                            <span class="badge bg-<?= (in_array($m['id'], $idsDevolvidoOuvidor ?? []) ? 'info' : 'secondary') ?>"><?= esc(in_array($m['id'], $idsDevolvidoOuvidor ?? []) ? 'Devolvido' : statusLabelGerente($m, false)) ?></span>
+                            <?php if (!empty($idsSolicitacaoProrrogacaoPendente[(int) $m['id']])): ?>
+                            <span class="badge bg-warning text-dark ms-1">Prorrogação</span>
+                            <?php endif; ?>
+                        </td>
                         <td><span class="badge bg-<?= $slaService->obterClasseSla($m) ?>"><?= $slaService->obterLabelSla($m) ?></span></td>
                         <td><a href="<?= url_to('ouvidoria.manifestacoes.show', $m['id']) ?>" class="btn btn-sm btn-outline-primary">Ver</a></td>
                     </tr>
@@ -199,8 +261,11 @@ $cardClass = function ($key) use ($ativo) {
 <?= $this->section('js') ?>
 <script>
 $(function() {
-    var $t = $('#tableOuvidorUltimas');
-    if ($t.length && $t.find('tbody tr').length > 0 && $t.find('tbody tr td[colspan]').length === 0) {
+    $('.table-datatable, #tableOuvidorUltimas').each(function() {
+        var $t = $(this);
+        if (!($t.length && $t.find('tbody tr').length > 0 && $t.find('tbody tr td[colspan]').length === 0)) {
+            return;
+        }
         $t.DataTable({
             language: {
                 url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/pt-BR.json',
@@ -214,7 +279,7 @@ $(function() {
             order: [[0, 'desc']],
             columnDefs: [{ orderable: false, targets: -1 }]
         });
-    }
+    });
 });
 </script>
 <?= $this->endSection() ?>

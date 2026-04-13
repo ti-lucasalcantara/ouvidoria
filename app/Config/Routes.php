@@ -28,6 +28,7 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->post('manifestacoes/encaminhar/(:num)', 'ManifestacoesController::encaminhar/$1', ['as' => 'ouvidoria.manifestacoes.encaminhar']);
     $routes->post('manifestacoes/devolver/(:num)', 'ManifestacoesController::devolver/$1', ['as' => 'ouvidoria.manifestacoes.devolver']);
     $routes->post('manifestacoes/voltar/(:num)', 'ManifestacoesController::voltar/$1', ['as' => 'ouvidoria.manifestacoes.voltar']);
+    $routes->post('manifestacoes/solicitarProrrogacaoPrazo/(:num)', 'ManifestacoesController::solicitarProrrogacaoPrazo/$1', ['as' => 'ouvidoria.manifestacoes.solicitarProrrogacaoPrazo']);
     $routes->post('manifestacoes/reabrir/(:num)', 'ManifestacoesController::reabrir/$1', ['as' => 'ouvidoria.manifestacoes.reabrir']);
     $routes->post('manifestacoes/comentar/(:num)', 'ManifestacoesController::comentar/$1', ['as' => 'ouvidoria.manifestacoes.comentar']);
     $routes->post('manifestacoes/editarComentario/(:num)', 'ManifestacoesController::editarComentario/$1', ['as' => 'ouvidoria.manifestacoes.editarComentario']);
@@ -38,6 +39,9 @@ $routes->group('ouvidoria', ['filter' => 'auth'], static function ($routes) {
     $routes->post('manifestacoes/responderOuvidor/(:num)', 'ManifestacoesController::responderOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.responderOuvidor']);
     $routes->post('manifestacoes/editarRespostaOuvidor/(:num)', 'ManifestacoesController::editarRespostaOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.editarRespostaOuvidor']);
     $routes->post('manifestacoes/excluirRespostaOuvidor/(:num)', 'ManifestacoesController::excluirRespostaOuvidor/$1', ['as' => 'ouvidoria.manifestacoes.excluirRespostaOuvidor']);
+    $routes->get('solicitacoes-prazo', 'SolicitacoesPrazoController::index', ['as' => 'ouvidoria.solicitacoesPrazo.index']);
+    $routes->post('solicitacoes-prazo/aprovar/(:num)', 'SolicitacoesPrazoController::aprovar/$1', ['as' => 'ouvidoria.solicitacoesPrazo.aprovar']);
+    $routes->post('solicitacoes-prazo/rejeitar/(:num)', 'SolicitacoesPrazoController::rejeitar/$1', ['as' => 'ouvidoria.solicitacoesPrazo.rejeitar']);
 
     // Anexos (download e abrir no navegador)
     $routes->get('anexos/download/(:num)', 'AnexosController::download/$1', ['as' => 'ouvidoria.anexos.download']);

@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Models\ManifestacaoModel;
 use App\Models\ManifestacaoAtribuicaoModel;
 use App\Models\ManifestacaoHistoricoModel;
+use App\Models\ManifestacaoSolicitacaoPrazoModel;
 use App\Models\UsuarioModel;
 
 /**
@@ -426,10 +427,14 @@ class ManifestacoesController extends BaseController
 
         $podeEditarManifestacao = $authService->podeEditarManifestacao($usuario ?? [], $manifestacao);
         $podeResponderOuvidor = $authService->podeResponderOuvidor($usuario ?? [], $manifestacao);
+        $podeSolicitarProrrogacaoPrazo = $authService->podeSolicitarProrrogacaoPrazo($usuario ?? [], $manifestacao);
 
         $manifestacaoCategoriaModel = model(\App\Models\ManifestacaoCategoriaModel::class);
+        $solicitacaoPrazoModel = model(ManifestacaoSolicitacaoPrazoModel::class);
         $respostaOuvidorModel = model(\App\Models\RespostaOuvidorModel::class);
         $respostaAnexoModel = model(\App\Models\RespostaOuvidorAnexoModel::class);
+        $solicitacoesPrazo = $solicitacaoPrazoModel->porManifestacao($id);
+        $ultimaSolicitacaoPrazo = $solicitacoesPrazo[0] ?? null;
         $respostasOuvidor = $respostaOuvidorModel->porManifestacao($id);
         $podeVerConteudo = $authService->podeVisualizarManifestacao($usuario ?? [], $manifestacao);
         foreach ($respostasOuvidor as &$r) {
@@ -483,6 +488,9 @@ class ManifestacoesController extends BaseController
             'usuario' => $usuario,
             'categoriasManifestacao' => $manifestacaoCategoriaModel->porManifestacao($id),
             'podeResponderOuvidor' => $podeResponderOuvidor,
+            'podeSolicitarProrrogacaoPrazo' => $podeSolicitarProrrogacaoPrazo,
+            'ultimaSolicitacaoPrazo' => $ultimaSolicitacaoPrazo,
+            'solicitacoesPrazo' => $solicitacoesPrazo,
             'respostasOuvidor' => $respostasOuvidor,
             'podeVerConteudoResposta' => $podeVerConteudo,
         ]);
@@ -857,6 +865,65 @@ class ManifestacoesController extends BaseController
         }
 
         session()->setFlashdata(getMessageSucess('toast', ['text' => 'Manifestação devolvida com sucesso.']));
+        return redirect()->back();
+    }
+
+    /**
+     * Usuário solicita prorrogação de prazo ao ouvidor.
+     */
+    public function solicitarProrrogacaoPrazo(int $id)
+    {
+        $usuario = obterUsuarioLogado();
+        $manifestacaoModel = model(ManifestacaoModel::class);
+        $manifestacao = $manifestacaoModel->find($id);
+        $authService = service('authorization');
+
+        if (!$manifestacao || !$authService->podeSolicitarProrrogacaoPrazo($usuario ?? [], $manifestacao)) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Acesso negado ou manifestação não elegível para prorrogação.']));
+            return redirect()->back();
+        }
+
+        $motivo = trim((string) ($this->request->getPost('motivo_prorrogacao') ?? ''));
+        $diasSolicitados = (int) ($this->request->getPost('dias_prorrogacao') ?? 0);
+
+        if ($motivo === '') {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Informe o motivo da solicitação de prorrogação.']));
+            return redirect()->back();
+        }
+
+        if ($diasSolicitados <= 0) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Informe a quantidade de dias solicitados.']));
+            return redirect()->back();
+        }
+
+        $solicitacaoPrazoModel = model(ManifestacaoSolicitacaoPrazoModel::class);
+        $atribuicaoAtual = $authService->obterAtribuicaoParaDevolver($usuario ?? [], $id);
+        $solicitacaoId = $solicitacaoPrazoModel->insert([
+            'manifestacao_id' => $id,
+            'solicitado_por_usuario_id' => (int) ($usuario['id'] ?? 0),
+            'manifestacao_atribuicao_id' => $atribuicaoAtual['id'] ?? null,
+            'dias_solicitados' => $diasSolicitados,
+            'motivo' => $motivo,
+            'status' => 'pendente',
+        ], true);
+
+        if (!$solicitacaoId) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'Não foi possível registrar a solicitação de prorrogação.']));
+            return redirect()->back();
+        }
+
+        model(ManifestacaoHistoricoModel::class)->registrar(
+            $id,
+            $usuario['id'] ?? null,
+            ManifestacaoHistoricoModel::TIPO_SOLICITACAO_PRORROGACAO_PRAZO,
+            [
+                'solicitacao_id' => $solicitacaoId,
+                'dias_solicitados' => $diasSolicitados,
+                'motivo' => $motivo,
+            ]
+        );
+
+        session()->setFlashdata(getMessageSucess('toast', ['text' => 'Solicitação de prorrogação enviada ao ouvidor.']));
         return redirect()->back();
     }
 

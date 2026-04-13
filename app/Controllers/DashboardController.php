@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Models\ManifestacaoModel;
 use App\Models\ManifestacaoAtribuicaoModel;
+use App\Models\ManifestacaoSolicitacaoPrazoModel;
 
 /**
  * Controller do Dashboard.
@@ -65,6 +66,7 @@ class DashboardController extends BaseController
     {
         $usuario = obterUsuarioLogado();
         $manifestacaoModel = model(ManifestacaoModel::class);
+        $solicitacaoPrazoModel = model(ManifestacaoSolicitacaoPrazoModel::class);
         $slaService = service('sla');
 
         // Contadores (usa $db para evitar estado acumulado no model)
@@ -74,6 +76,9 @@ class DashboardController extends BaseController
         $totalAbertas = $db->table('manifestacoes')->whereIn('status', ['recebida', 'encaminhada', 'em_atendimento'])->countAllResults();
         $totalEncaminhadas = $db->table('manifestacoes')->where('status', 'encaminhada')->countAllResults();
         $totalRespondidas = $db->table('manifestacoes')->where('status', 'respondida')->countAllResults();
+        $totalSolicitacoesProrrogacaoPendentes = $db->table('manifestacao_solicitacoes_prazo')
+            ->where('status', 'pendente')
+            ->countAllResults();
 
         $agora = date('Y-m-d H:i:s');
         $em48h = date('Y-m-d H:i:s', strtotime('+48 hours'));
@@ -114,6 +119,10 @@ class DashboardController extends BaseController
             case 'respondida':
                 $builder->where('status', 'respondida');
                 break;
+            case 'prorrogacao_pendente':
+                $builder->join('manifestacao_solicitacoes_prazo msp', 'msp.manifestacao_id = manifestacoes.id')
+                    ->where('msp.status', 'pendente');
+                break;
             case 'em_atraso':
                 $builder->whereNotIn('status', ['finalizada', 'arquivada', 'respondida'])
                     ->where('data_limite_sla <', $agora)->where('data_limite_sla IS NOT NULL');
@@ -135,11 +144,17 @@ class DashboardController extends BaseController
         }
 
         $ultimas = $builder->limit(50)->findAll();
+        $solicitacoesProrrogacaoPendentes = $solicitacaoPrazoModel->pendentesDetalhadas();
+        $idsSolicitacaoProrrogacaoPendente = array_flip(array_map('intval', array_column($solicitacoesProrrogacaoPendentes, 'manifestacao_id')));
 
         // Descriptografa assunto para exibição na tabela (ouvidor/admin podem ver)
         try {
             $encryptionService = service('encryption');
             $ultimas = array_map(fn($m) => $encryptionService->descriptografarManifestacao($m), $ultimas);
+            $solicitacoesProrrogacaoPendentes = array_map(function ($m) use ($encryptionService) {
+                $m['id'] = $m['manifestacao_id'] ?? $m['id'] ?? 0;
+                return $encryptionService->descriptografarManifestacao($m);
+            }, $solicitacoesProrrogacaoPendentes);
         } catch (\Throwable $e) {
             // Master key não configurada - assunto permanece criptografado
         }
@@ -162,10 +177,13 @@ class DashboardController extends BaseController
             'totalAbertas' => $totalAbertas,
             'totalEncaminhadas' => $totalEncaminhadas,
             'totalRespondidas' => $totalRespondidas,
+            'totalSolicitacoesProrrogacaoPendentes' => $totalSolicitacoesProrrogacaoPendentes,
             'emAtraso' => $emAtraso,
             'aVencer' => $aVencer,
             'finalizadasMes' => $finalizadasMes,
             'ultimas' => $ultimas,
+            'solicitacoesProrrogacaoPendentes' => $solicitacoesProrrogacaoPendentes,
+            'idsSolicitacaoProrrogacaoPendente' => $idsSolicitacaoProrrogacaoPendente,
             'slaService' => $slaService,
             'statusFiltro' => $statusFiltro,
             'prioridadeFiltro' => $prioridadeFiltro,

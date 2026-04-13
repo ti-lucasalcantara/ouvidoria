@@ -22,6 +22,30 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
     </div>
 </div>
 
+<?php if (!empty($ultimaSolicitacaoPrazo)): ?>
+<div class="alert alert-<?= ($ultimaSolicitacaoPrazo['status'] ?? '') === 'pendente' ? 'warning' : (($ultimaSolicitacaoPrazo['status'] ?? '') === 'aprovada' ? 'success' : 'secondary') ?> border-0 shadow-sm mb-4">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+            <strong>Última solicitação de prorrogação:</strong>
+            <?= esc(ucfirst($ultimaSolicitacaoPrazo['status'] ?? 'pendente')) ?>
+            <?php if (!empty($ultimaSolicitacaoPrazo['solicitante_nome'])): ?>
+            por <?= esc($ultimaSolicitacaoPrazo['solicitante_nome']) ?>
+            <?php endif; ?>
+            em <?= !empty($ultimaSolicitacaoPrazo['created_at']) ? date('d/m/Y H:i', strtotime($ultimaSolicitacaoPrazo['created_at'])) : '-' ?>.
+            <?php if (!empty($ultimaSolicitacaoPrazo['dias_solicitados'])): ?>
+            Pedido de <?= (int) $ultimaSolicitacaoPrazo['dias_solicitados'] ?> dia(s).
+            <?php endif; ?>
+            <?php if (!empty($ultimaSolicitacaoPrazo['motivo'])): ?>
+            <div class="small mt-2"><?= esc(strip_tags((string) $ultimaSolicitacaoPrazo['motivo'])) ?></div>
+            <?php endif; ?>
+        </div>
+        <?php if (!empty($solicitacoesPrazo) && count($solicitacoesPrazo) > 1): ?>
+        <span class="badge bg-dark"><?= count($solicitacoesPrazo) ?> solicitações registradas</span>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Cabeçalho -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
@@ -203,6 +227,66 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
             </div>
         </div>
 
+        <?php
+        $solicitacoesPrazo = isset($solicitacoesPrazo) && is_array($solicitacoesPrazo) ? $solicitacoesPrazo : [];
+        if (!empty($solicitacoesPrazo)):
+        ?>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-hourglass-half me-2"></i>Solicitações de prorrogação</h5>
+                <?php if (in_array((obterUsuarioLogado()['role'] ?? ''), ['administrador', 'ouvidor'])): ?>
+                <a href="<?= url_to('ouvidoria.solicitacoesPrazo.index') ?>" class="btn btn-sm btn-outline-warning">Abrir tela de análise</a>
+                <?php endif; ?>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data</th>
+                                <th>Solicitante</th>
+                                <th>Solicitado</th>
+                                <th>Concedido</th>
+                                <th>Status</th>
+                                <th>Motivo</th>
+                                <th>Análise</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($solicitacoesPrazo as $sp): ?>
+                            <tr>
+                                <td><small><?= !empty($sp['created_at']) ? date('d/m/Y H:i', strtotime($sp['created_at'])) : '-' ?></small></td>
+                                <td><?= esc($sp['solicitante_nome'] ?? '-') ?></td>
+                                <td><span class="badge bg-warning text-dark"><?= (int) ($sp['dias_solicitados'] ?? 0) ?> dia(s)</span></td>
+                                <td>
+                                    <?php if (!empty($sp['dias_concedidos'])): ?>
+                                    <span class="badge bg-success"><?= (int) $sp['dias_concedidos'] ?> dia(s)</span>
+                                    <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-<?= ($sp['status'] ?? '') === 'pendente' ? 'warning text-dark' : (($sp['status'] ?? '') === 'aprovada' ? 'success' : 'danger') ?>">
+                                        <?= esc(ucfirst($sp['status'] ?? '-')) ?>
+                                    </span>
+                                </td>
+                                <td class="text-break"><?= esc(mb_strimwidth(strip_tags((string) ($sp['motivo'] ?? '')), 0, 90, '...')) ?></td>
+                                <td class="text-break">
+                                    <?php if (!empty($sp['resposta'])): ?>
+                                    <?= esc(mb_strimwidth(strip_tags((string) $sp['resposta']), 0, 90, '...')) ?>
+                                    <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Respostas ao ouvidor -->
         <?php
         $respostasOuvidor = isset($respostasOuvidor) && is_array($respostasOuvidor) ? $respostasOuvidor : [];
@@ -265,6 +349,8 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                 'RESPOSTA_OUVIDOR' => 'Resposta ao ouvidor',
                 'RESPOSTA_OUVIDOR_EDITADA' => 'Resposta ao ouvidor (editada)',
                 'RESPOSTA_OUVIDOR_EXCLUIDA' => 'Resposta ao ouvidor (excluída)',
+                'SOLICITACAO_PRORROGACAO_PRAZO' => 'Solicitação de prorrogação de prazo',
+                'ANALISE_SOLICITACAO_PRORROGACAO_PRAZO' => 'Análise da solicitação de prorrogação',
                 default => $tipo,
             };
         };
@@ -288,6 +374,8 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                         'RESPOSTA_OUVIDOR' => 'reply',
                         'RESPOSTA_OUVIDOR_EDITADA' => 'edit',
                         'RESPOSTA_OUVIDOR_EXCLUIDA' => 'trash-alt',
+                        'SOLICITACAO_PRORROGACAO_PRAZO' => 'hourglass-half',
+                        'ANALISE_SOLICITACAO_PRORROGACAO_PRAZO' => 'clipboard-check',
                         default => 'circle',
                     };
                     $txtRespostaOuvidor = '';
@@ -301,6 +389,26 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                     $txtRespostaExcluida = '';
                     if ($tipo === 'RESPOSTA_OUVIDOR_EXCLUIDA' && !empty($detalhes['conteudo'])) {
                         $txtRespostaExcluida = $detalhes['conteudo'];
+                    }
+                    $txtSolicitacaoProrrogacao = '';
+                    if ($tipo === 'SOLICITACAO_PRORROGACAO_PRAZO') {
+                        $txtSolicitacaoProrrogacao = 'Solicitados ' . (int) ($detalhes['dias_solicitados'] ?? 0) . ' dia(s).';
+                        if (!empty($detalhes['motivo'])) {
+                            $txtSolicitacaoProrrogacao .= ' ' . strip_tags((string) $detalhes['motivo']);
+                        }
+                    }
+                    $txtAnaliseSolicitacaoProrrogacao = '';
+                    if ($tipo === 'ANALISE_SOLICITACAO_PRORROGACAO_PRAZO') {
+                        $txtAnaliseSolicitacaoProrrogacao = 'Decisão: ' . esc(ucfirst((string) ($detalhes['decisao'] ?? '')));
+                        if (!empty($detalhes['dias_concedidos'])) {
+                            $txtAnaliseSolicitacaoProrrogacao .= ' · Dias concedidos: ' . (int) $detalhes['dias_concedidos'];
+                        }
+                        if (!empty($detalhes['novo_prazo'])) {
+                            $txtAnaliseSolicitacaoProrrogacao .= ' · Novo prazo: ' . date('d/m/Y H:i', strtotime($detalhes['novo_prazo']));
+                        }
+                        if (!empty($detalhes['resposta'])) {
+                            $txtAnaliseSolicitacaoProrrogacao .= ' · ' . strip_tags((string) $detalhes['resposta']);
+                        }
                     }
                     $txtComentario = '';
                     if ($tipo === 'COMENTARIO') {
@@ -360,6 +468,10 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                             <div class="mt-1 p-2 bg-light rounded small"><?= esc($txtDevolucao) ?></div>
                             <?php elseif ($txtVolta !== ''): ?>
                             <div class="mt-1 p-2 bg-light rounded small"><?= esc($txtVolta) ?></div>
+                            <?php elseif ($txtSolicitacaoProrrogacao !== ''): ?>
+                            <div class="mt-1 p-2 bg-light rounded small"><?= esc($txtSolicitacaoProrrogacao) ?></div>
+                            <?php elseif ($txtAnaliseSolicitacaoProrrogacao !== ''): ?>
+                            <div class="mt-1 p-2 bg-light rounded small"><?= $txtAnaliseSolicitacaoProrrogacao ?></div>
                             <?php elseif ($txtRespostaOuvidor !== ''): ?>
                             <div class="mt-1 p-2 bg-light rounded small"><?= $txtRespostaOuvidor ?></div>
                             <?php elseif ($txtRespostaEditada !== ''): ?>
@@ -417,6 +529,11 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                     <?php endif; ?>
                     </div>
                 </div>
+                <?php endif; ?>
+                <?php if (!empty($podeSolicitarProrrogacaoPrazo)): ?>
+                <button type="button" class="btn btn-outline-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#modalSolicitarProrrogacaoPrazo">
+                    <i class="fas fa-hourglass-half me-1"></i>Solicitar prorrogação de prazo
+                </button>
                 <?php endif; ?>
                 <?php if ($authService->podeAlterarStatus(obterUsuarioLogado(), $manifestacao)): ?>
                 <button type="button" class="btn btn-outline-primary w-100 mb-2" data-bs-toggle="modal" data-bs-target="#modalStatus">
@@ -636,6 +753,37 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 </div>
 <?php endif; ?>
 
+<?php if (!empty($podeSolicitarProrrogacaoPrazo)): ?>
+<div class="modal fade" id="modalSolicitarProrrogacaoPrazo" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <?= form_open(url_to('ouvidoria.manifestacoes.solicitarProrrogacaoPrazo', $manifestacao['id'])) ?>
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-hourglass-half me-2"></i>Solicitar prorrogação de prazo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Dias solicitados <span class="text-danger">*</span></label>
+                    <input type="number" name="dias_prorrogacao" class="form-control" min="1" step="1" value="1" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Motivo <span class="text-danger">*</span></label>
+                    <div id="editor-prorrogacao" style="height: 180px;"></div>
+                    <input type="hidden" name="motivo_prorrogacao" id="motivo_prorrogacao" required>
+                </div>
+                <p class="text-muted small mb-0">A solicitação ficará visível para o ouvidor no dashboard e no histórico da manifestação.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-warning"><i class="fas fa-paper-plane me-1"></i>Enviar solicitação</button>
+            </div>
+            <?= form_close() ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Modal Reabrir -->
 <div class="modal fade" id="modalReabrir" tabindex="-1">
     <div class="modal-dialog">
@@ -771,6 +919,18 @@ $(function() {
         });
         $('#modalDevolver form').on('submit', function() {
             $('#mensagem_devolucao').val(quillDevolucao.root.innerHTML);
+        });
+    }
+    var quillProrrogacao = $('#editor-prorrogacao').length ? new Quill('#editor-prorrogacao', {
+        theme: 'snow',
+        modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
+    }) : null;
+    if (quillProrrogacao) {
+        quillProrrogacao.on('text-change', function() {
+            $('#motivo_prorrogacao').val(quillProrrogacao.root.innerHTML);
+        });
+        $('#modalSolicitarProrrogacaoPrazo form').on('submit', function() {
+            $('#motivo_prorrogacao').val(quillProrrogacao.root.innerHTML);
         });
     }
     $('.btn-reabrir-dentro-devolver').on('click', function() {

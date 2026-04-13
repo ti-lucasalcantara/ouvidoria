@@ -181,6 +181,15 @@ class AuthorizationService
     }
 
     /**
+     * Verifica se usuário pode solicitar prorrogação de prazo.
+     * Somente perfil usuario com atribuição ativa.
+     */
+    public function podeSolicitarProrrogacaoPrazo(array $usuario, array $manifestacao): bool
+    {
+        return $this->obterAtribuicaoParaDevolver($usuario, (int) ($manifestacao['id'] ?? 0)) !== null;
+    }
+
+    /**
      * Verifica se usuário pode fazer download de anexo.
      */
     public function podeDownloadAnexo(array $usuario, array $manifestacao): bool
@@ -209,6 +218,14 @@ class AuthorizationService
      * Somente ouvidor e administrador.
      */
     public function podeGerenciarCategoriasManifestacao(array $usuario): bool
+    {
+        return in_array($usuario['role'] ?? '', ['administrador', 'ouvidor']);
+    }
+
+    /**
+     * Verifica se usuário pode analisar solicitações de prorrogação.
+     */
+    public function podeGerenciarSolicitacoesProrrogacao(array $usuario): bool
     {
         return in_array($usuario['role'] ?? '', ['administrador', 'ouvidor']);
     }
