@@ -23,7 +23,7 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 </div>
 
 <?php if (!empty($ultimaSolicitacaoPrazo)): ?>
-<div class="alert alert-<?= ($ultimaSolicitacaoPrazo['status'] ?? '') === 'pendente' ? 'warning' : (($ultimaSolicitacaoPrazo['status'] ?? '') === 'aprovada' ? 'success' : 'secondary') ?> border-0 shadow-sm mb-4">
+<div class="d-none alert alert-<?= ($ultimaSolicitacaoPrazo['status'] ?? '') === 'pendente' ? 'warning' : (($ultimaSolicitacaoPrazo['status'] ?? '') === 'aprovada' ? 'success' : 'secondary') ?> border-0 shadow-sm mb-4">
     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
         <div>
             <strong>Última solicitação de prorrogação:</strong>
