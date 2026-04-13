@@ -234,9 +234,6 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="fas fa-hourglass-half me-2"></i>Solicitações de prorrogação</h5>
-                <?php if (in_array((obterUsuarioLogado()['role'] ?? ''), ['administrador', 'ouvidor'])): ?>
-                <a href="<?= url_to('ouvidoria.solicitacoesPrazo.index') ?>" class="btn btn-sm btn-outline-warning">Abrir tela de análise</a>
-                <?php endif; ?>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
