@@ -30,8 +30,11 @@ class SolicitacoesPrazoController extends BaseController
         try {
             $encryptionService = service('encryption');
             $solicitacoes = array_map(function ($s) use ($encryptionService) {
-                $s['id'] = $s['manifestacao_id'] ?? $s['id'] ?? 0;
-                return $encryptionService->descriptografarManifestacao($s);
+                $solicitacaoId = $s['id'] ?? 0;
+                $s['id'] = $s['manifestacao_id'] ?? 0;
+                $s = $encryptionService->descriptografarManifestacao($s);
+                $s['id'] = $solicitacaoId;
+                return $s;
             }, $solicitacoes);
         } catch (\Throwable $e) {
             // Ignora quando criptografia não estiver disponível.

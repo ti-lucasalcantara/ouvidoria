@@ -152,8 +152,11 @@ class DashboardController extends BaseController
             $encryptionService = service('encryption');
             $ultimas = array_map(fn($m) => $encryptionService->descriptografarManifestacao($m), $ultimas);
             $solicitacoesProrrogacaoPendentes = array_map(function ($m) use ($encryptionService) {
-                $m['id'] = $m['manifestacao_id'] ?? $m['id'] ?? 0;
-                return $encryptionService->descriptografarManifestacao($m);
+                $solicitacaoId = $m['id'] ?? 0;
+                $m['id'] = $m['manifestacao_id'] ?? 0;
+                $m = $encryptionService->descriptografarManifestacao($m);
+                $m['id'] = $solicitacaoId;
+                return $m;
             }, $solicitacoesProrrogacaoPendentes);
         } catch (\Throwable $e) {
             // Master key não configurada - assunto permanece criptografado
