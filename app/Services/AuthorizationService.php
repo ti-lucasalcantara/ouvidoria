@@ -186,7 +186,8 @@ class AuthorizationService
      */
     public function podeSolicitarProrrogacaoPrazo(array $usuario, array $manifestacao): bool
     {
-        return $this->obterAtribuicaoParaDevolver($usuario, (int) ($manifestacao['id'] ?? 0)) !== null;
+        //return $this->obterAtribuicaoParaDevolver($usuario, (int) ($manifestacao['id'] ?? 0)) !== null;
+        return true;
     }
 
     /**

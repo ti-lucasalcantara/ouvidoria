@@ -12,9 +12,14 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
     <h1 class="h3 mb-0 text-dark"><i class="fas fa-folder-open me-2"></i><?= esc($manifestacao['protocolo']) ?></h1>
     <div class="d-flex gap-2">
+        <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#modalSolicitarProrrogacaoPrazo">
+            <i class="fas fa-hourglass-half me-1"></i>Solicitar prorrogação de prazo
+        </button>
+        
         <?php if (!empty($podeResponderOuvidor)): ?>
         <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalResponderOuvidor"><i class="fas fa-reply me-1"></i>Responder para o ouvidor</button>
         <?php endif; ?>
+       
         <?php if (!empty($podeEditarManifestacao)): ?>
         <a href="<?= url_to('ouvidoria.manifestacoes.edit', $manifestacao['id']) ?>" class="btn btn-primary"><i class="fas fa-edit me-1"></i>Editar</a>
         <?php endif; ?>
@@ -527,11 +532,6 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
                     </div>
                 </div>
                 <?php endif; ?>
-                <?php if (!empty($podeSolicitarProrrogacaoPrazo)): ?>
-                <button type="button" class="btn btn-outline-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#modalSolicitarProrrogacaoPrazo">
-                    <i class="fas fa-hourglass-half me-1"></i>Solicitar prorrogação de prazo
-                </button>
-                <?php endif; ?>
                 <?php if ($authService->podeAlterarStatus(obterUsuarioLogado(), $manifestacao)): ?>
                 <button type="button" class="btn btn-outline-primary w-100 mb-2" data-bs-toggle="modal" data-bs-target="#modalStatus">
                     <i class="fas fa-exchange-alt me-1"></i>Alterar status
@@ -750,36 +750,33 @@ Manifestação <?= esc($manifestacao['protocolo']) ?> - Ouvidoria
 </div>
 <?php endif; ?>
 
-<?php if (!empty($podeSolicitarProrrogacaoPrazo)): ?>
 <div class="modal fade" id="modalSolicitarProrrogacaoPrazo" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog">
         <div class="modal-content">
-            <?= form_open(url_to('ouvidoria.manifestacoes.solicitarProrrogacaoPrazo', $manifestacao['id'])) ?>
+            <?= form_open(url_to('ouvidoria.manifestacoes.solicitarProrrogacaoPrazo', $manifestacao['id']), ['id' => 'formSolicitarProrrogacaoPrazo']) ?>
             <div class="modal-header">
                 <h5 class="modal-title"><i class="fas fa-hourglass-half me-2"></i>Solicitar prorrogação de prazo</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label">Dias solicitados <span class="text-danger">*</span></label>
-                    <input type="number" name="dias_prorrogacao" class="form-control" min="1" step="1" value="1" required>
+                    <label for="motivo_prorrogacao" class="form-label">Motivo da solicitação <span class="text-danger">*</span></label>
+                    <textarea name="motivo_prorrogacao" id="motivo_prorrogacao" class="form-control" rows="4" placeholder="Informe o motivo da solicitação de prorrogação..." required></textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Motivo <span class="text-danger">*</span></label>
-                    <div id="editor-prorrogacao" style="height: 180px;"></div>
-                    <input type="hidden" name="motivo_prorrogacao" id="motivo_prorrogacao" required>
+                    <label for="dias_prorrogacao" class="form-label">Quantidade de dias <span class="text-danger">*</span></label>
+                    <input type="text" name="dias_prorrogacao" id="dias_prorrogacao" class="form-control" placeholder="Ex.: 10" inputmode="numeric" pattern="[0-9]+" maxlength="2" required>
                 </div>
-                <p class="text-muted small mb-0">A solicitação ficará visível para o ouvidor no dashboard e no histórico da manifestação.</p>
+                <p class="text-muted small mb-0">Máximo permitido: 30 dias.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-warning"><i class="fas fa-paper-plane me-1"></i>Enviar solicitação</button>
+                <button type="submit" class="btn btn-warning" id="btnEnviarSolicitacaoProrrogacao"><i class="fas fa-paper-plane me-1"></i>Enviar solicitação</button>
             </div>
             <?= form_close() ?>
         </div>
     </div>
 </div>
-<?php endif; ?>
 
 <!-- Modal Reabrir -->
 <div class="modal fade" id="modalReabrir" tabindex="-1">
@@ -918,18 +915,16 @@ $(function() {
             $('#mensagem_devolucao').val(quillDevolucao.root.innerHTML);
         });
     }
-    var quillProrrogacao = $('#editor-prorrogacao').length ? new Quill('#editor-prorrogacao', {
-        theme: 'snow',
-        modules: { toolbar: [['bold', 'italic'], ['link'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]] }
-    }) : null;
-    if (quillProrrogacao) {
-        quillProrrogacao.on('text-change', function() {
-            $('#motivo_prorrogacao').val(quillProrrogacao.root.innerHTML);
-        });
-        $('#modalSolicitarProrrogacaoPrazo form').on('submit', function() {
-            $('#motivo_prorrogacao').val(quillProrrogacao.root.innerHTML);
-        });
-    }
+    $('#dias_prorrogacao').on('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 2);
+    });
+    $('#formSolicitarProrrogacaoPrazo').on('submit', function() {
+        var btn = document.getElementById('btnEnviarSolicitacaoProrrogacao');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando solicitação...';
+        }
+    });
     $('.btn-reabrir-dentro-devolver').on('click', function() {
         var modalDevolver = document.getElementById('modalDevolver');
         var modalReabrir = document.getElementById('modalReabrir');

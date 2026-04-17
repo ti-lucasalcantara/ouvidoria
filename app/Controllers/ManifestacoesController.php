@@ -896,6 +896,11 @@ class ManifestacoesController extends BaseController
             return redirect()->back();
         }
 
+        if ($diasSolicitados > 30) {
+            session()->setFlashdata(getMessageFail('toast', ['text' => 'A quantidade máxima permitida para prorrogação é de 30 dias.']));
+            return redirect()->back();
+        }
+
         $solicitacaoPrazoModel = model(ManifestacaoSolicitacaoPrazoModel::class);
         $atribuicaoAtual = $authService->obterAtribuicaoParaDevolver($usuario ?? [], $id);
         $solicitacaoId = $solicitacaoPrazoModel->insert([

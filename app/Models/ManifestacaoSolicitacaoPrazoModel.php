@@ -41,7 +41,7 @@ class ManifestacaoSolicitacaoPrazoModel extends Model
     protected $validationRules = [
         'manifestacao_id' => 'required|integer',
         'solicitado_por_usuario_id' => 'required|integer',
-        'dias_solicitados' => 'permit_empty|integer|greater_than[0]',
+        'dias_solicitados' => 'permit_empty|integer|greater_than[0]|less_than_equal_to[30]',
         'dias_concedidos' => 'permit_empty|integer|greater_than[0]',
         'motivo' => 'required|min_length[5]',
         'status' => 'required|in_list[pendente,aprovada,rejeitada]',
